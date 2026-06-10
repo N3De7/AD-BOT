@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 CONFIG_FILE = "bot_config.json"
 DEFAULT_CONFIG = {
     "admin_usernames": ["ad0ri"],
-    "vip_usernames": [],
+    "vip_usernames": ["ad0ri"],
     "banned_users": [],
     "teleport_locations": {
         "vip": {"x": 14.5, "y": 16.75, "z": 5.5},
@@ -31,7 +31,7 @@ DEFAULT_CONFIG = {
         "dj": {"x": 9.5, "y": 10.75, "z": 10.5}
     },
     "language": "fa",
-    "welcome_message": "خوش اومدی {username}! برای دستورات !help بزنید.",
+    "welcome_message": "خوش اومدی {username} سلام ! برای دستورات !help بزنید.",
     "announcement_interval": 300,
     "announcement_message": "برای دیدن دستورات ربات، !help بزنید!"
 }
