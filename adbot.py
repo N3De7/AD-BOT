@@ -2479,14 +2479,6 @@ async def main():
     logger.info("تلاش برای بارگذاری متغیرهای محیطی...")
     room_id = os.getenv("ROOM_ID", "68e771922d585712212e8070")
     api_token = os.getenv("API_TOKEN", "9a089b7f9bb1f38a943a6add2af7e1823a709e51119a7f9c7f870b443bb8c4cc")
-
-        # چک کردن اینکه آیا آیدی روم جدیدی ذخیره شده است یا خیر
-    if os.path.exists("current_room.txt"):
-        with open("current_room.txt", "r") as f:
-            saved_room = f.read().strip()
-    if saved_room:
-    room_id = saved_room
-    logger.info(f"🤖 ربات آیدی روم ذخیره شده را بارگذاری کرد: {room_id}")
                 
     if not room_id or not api_token:
         logger.error("ROOM_ID یا API_TOKEN تنظیم نشده‌اند.")
