@@ -1301,8 +1301,8 @@ class AdvancedBot(BaseBot):
             "!addtele نام_مکان - ذخیره مکان جدید\n"
             "!deltele نام_مکان - حذف مکان تلپورت\n"
             "!welcome پیام - تنظیم پیام خوش‌آمدگویی\n"
-            "!addadmin @username - افزودن ادمین (فقط bad_qoq)\n"
-            "!removeadmin @username - حذف ادمین (فقط bad_qoq)\n"
+            "!addadmin @username - افزودن ادمین (فقط ad0ri)\n"
+            "!removeadmin @username - حذف ادمین (فقط ad0ri)\n"
             "!listadd - نمایش لیست ادمین‌ها\n"
             "!freeze @username - فریز کردن کاربر\n"
             "!unfreeze @username - آزاد کردن کاربر از فریز\n"
@@ -2143,8 +2143,8 @@ class AdvancedBot(BaseBot):
         logger.info(f"پیام خوش‌آمدگویی توسط {user.username} به '{welcome_message}' تغییر کرد.")
 
     async def cmd_addadmin(self, user: User, message: str):
-        if user.username.lower() != "bad_qoq":
-            await self.highrise.chat("فقط bad_qoq می‌تواند از این دستور استفاده کند!")
+        if user.username.lower() != "ad0ri":
+            await self.highrise.chat("فقط ad0ri می‌تواند از این دستور استفاده کند!")
             logger.info(f"کاربر {user.username} سعی کرد !addadmin را اجرا کند اما دسترسی ندارد.")
             return
 
