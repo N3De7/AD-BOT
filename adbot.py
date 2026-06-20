@@ -2425,9 +2425,9 @@ async def start_background_web_server():
         logger.error(f"خطا در اجرای وب‌سرور پس‌زمینه: {e}")
     
 async def main():
-    # خواندن متغیرها مستقیماً از پنل رندر (نسخه اصلاح شده بدون get_env)
+    # خواندن متغیرها مستقیماً از پنل رندر
     room_id = os.getenv("ROOM_ID", "678e7c1eb8d7f7639ba96f3a")
-    api_token = os.getenv("API_TOKEN", "")
+    api_token = os.getenv("API_TOKEN", "9a089b7f9bb1f38a943a6add2af7e1823a709e51119a7f9c7f870b443bb8c4cc")
 
     if not api_token:
         logger.error("❌ خطای بحرانی: متغیر API_TOKEN در پنل رندر تنظیم نشده است!")
@@ -2445,7 +2445,7 @@ async def main():
         except Exception as e:
             logger.error(f"خطا در اجرای وب‌سرور پس‌زمینه: {e}")
 
-    # اجرای وب‌سرور در یک نخ کاملاً جداگانه برای جلوگیری از فریز شدن
+    # اجرای وب‌سرور در یک نخ کاملاً جداگانه برای جلوگیری از فریز شدن رندر
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
 
@@ -2478,3 +2478,7 @@ async def main():
                 pass
             attempt += 1
             await asyncio.sleep(5)
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
