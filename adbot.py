@@ -1236,12 +1236,10 @@ class AdvancedBot(BaseBot):
         self.user_dances[username] = emote
         duration = self.emote_durations.get(emote, 7.5)
 
-        async def dance_loop():
+    async def dance_loop():
             try:
                 while self.user_dances.get(username) == emote:
-                    # تغییر به send_animation به همراه شناسه کاربر برای سازگاری با روم های سه‌بعدی
                     await self.highrise.send_animation(emote, user.id)
-                    # اضافه کردن ۱.۵ ثانیه زمان استراحت برای جلوگیری از بلاک شدن و قفل شدن توسط سرور ۳D
                     await sleep(duration + 1.5)
             except CancelledError:
                 logger.info(f"وظیفه رقص برای {username} لغو شد.")
