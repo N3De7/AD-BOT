@@ -2425,7 +2425,7 @@ async def start_background_web_server():
         logger.error(f"خطا در اجرای وب‌سرور پس‌زمینه: {e}")
     
 def main():
-    # اجرای وب‌سرور با ساختار هماهنگ با بالای فایل شما
+    # اجرای وب‌سرور در یک Thread جداگانه برای زنده ماندن رندر
     import threading
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
@@ -2440,10 +2440,12 @@ def main():
 
     logger.info(f"🚀 در حال راه‌اندازی ربات برای روم: {room_id}")
     
-    # اجرای حلقه اصلی ربات
-    from highrise_bot_sdk import Bot
-    bot = AdvancedBot()
-    bot.run(room_id, api_token)
+    # 🌟 اجرای استاندارد ربات بر اساس آپدیت جدید SDK هایرایز
+    from highrise_bot_sdk import BotApp
+    
+    bot_instance = AdvancedBot()
+    app = BotApp(api_token, room_id, bot_instance)
+    app.run()
 
 if __name__ == "__main__":
     main()
