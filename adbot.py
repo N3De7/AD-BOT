@@ -79,8 +79,7 @@ class AdvancedBot(BaseBot):
             "!freeze": self.cmd_freeze,
             "!unfreeze": self.cmd_unfreeze,
             "!party": self.cmd_party,
-            "!partys": self.cmd_partys,
-            "!changeroom": self.cmd_changeroom
+            "!partys": self.cmd_partys
         }
         self.emotes = {
             "1": "idle_zombie",
@@ -1205,20 +1204,25 @@ class AdvancedBot(BaseBot):
 
     async def on_chat(self, user: User, message: str):
         username = user.username.lower()
-        msg = message.strip().lower()
+        msg = message.strip()
+        msg_lower = msg.lower()
         self.user_scores[username] = self.user_scores.get(username, 0) + 2
 
-        if msg in self.emote_mapping:
-            await self.start_dance(user, self.emote_mapping[msg])
-        elif msg == "stop":
+        if msg_lower in self.emote_mapping:
+            await self.start_dance(user, self.emote_mapping[msg_lower])
+        elif msg_lower == "stop":
             await self.stop_dance(user)
-        elif msg.startswith("!"):
+        elif msg_lower.startswith("!"):
             parts = msg.split()
-            cmd = parts[0] if len(parts) == 1 else " ".join(parts[:2]) if parts[0] == "!item" else parts[0]
+            cmd = parts[0].lower() if len(parts) == 1 else ("!item set" if parts[0].lower() == "!item" else parts[0].lower())
             if cmd in self.commands:
-                await self.commands[cmd](user, message)
+                try:
+                    await self.commands[cmd](user, parts)
+                except Exception as e:
+                    logger.error(f"خطا در اجرای دستور {cmd} توسط {username}: {e}")
+                    await self.highrise.chat(f"❌ خطا در اجرای دستور: {e}")
             else:
-                await self.highrise.chat(self.get_message("invalid_command", cmd=cmd))
+                await self.highrise.chat(self.get_message("invalid_command"))
 
     async def on_tip(self, sender: User, receiver: User, tip):
         try:
@@ -1265,7 +1269,7 @@ class AdvancedBot(BaseBot):
             
            
 
-    async def cmd_help(self, user: User, message: str):
+    async def cmd_help(self, user: User, parts: list):
         help_text = (
             "دستورات ربات:\n"
             "1-6 - اجرای رقص\n"
@@ -1313,13 +1317,13 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(chunk)
         logger.info(f"راهنما توسط {user.username} درخواست شد.")
 
-    async def cmd_spam(self, user: User, message: str):
+    async def cmd_spam(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !spam را ندارد.")
             return
 
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         if len(parts) < 2 or not parts[1].isdigit():
             await self.highrise.chat(self.get_message("invalid_format", format="!spam تعداد پیام"))
             logger.info(f"فرمت نادرست برای دستور !spam توسط {user.username} وارد شد.")
@@ -1342,13 +1346,13 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در ارسال پیام اسپم: {str(e)}")
             logger.error(f"خطا در cmd_spam برای {user.username}: {str(e)}")
 
-    async def cmd_tele(self, user: User, message: str):
+    async def cmd_tele(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !tele را ندارد.")
             return
 
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         
         if len(parts) == 3 and parts[1].startswith("@"):
             target_username = parts[1][1:].lower()
@@ -1442,8 +1446,8 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(self.get_message("invalid_format", format="!tele @username [مکان] یا !tele to @username یا !tele me @username یا !tele me all"))
             logger.info(f"فرمت نادرست برای دستور !tele توسط {user.username} وارد شد.")
 
-    async def cmd_heart(self, user: User, message: str):
-        parts = message.lower().split()
+    async def cmd_heart(self, user: User, parts: list):
+        parts = [p.lower() for p in parts]
         
         if parts[0] == "!heart" and len(parts) == 2 and parts[1] == "all":
             if user.username.lower() not in self.config["admin_usernames"]:
@@ -1515,8 +1519,8 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در ارسال قلب بنفش: {e}")
             logger.error(f"خطا در ارسال قلب به {target_username}: {e}")
 
-    async def cmd_clap(self, user: User, message: str):
-        parts = message.lower().split()
+    async def cmd_clap(self, user: User, parts: list):
+        parts = [p.lower() for p in parts]
         
         if parts[0] == "!clap" and len(parts) == 2 and parts[1] == "all":
             if user.username.lower() not in self.config["admin_usernames"]:
@@ -1588,8 +1592,8 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در ارسال clap: {e}")
             logger.error(f"خطا در ارسال clap به {target_username}: {e}")
 
-    async def cmd_wink(self, user: User, message: str):
-        parts = message.lower().split()
+    async def cmd_wink(self, user: User, parts: list):
+        parts = [p.lower() for p in parts]
         
         if parts[0] == "!wink" and len(parts) == 2 and parts[1] == "all":
             if user.username.lower() not in self.config["admin_usernames"]:
@@ -1661,8 +1665,8 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در ارسال wink: {e}")
             logger.error(f"خطا در ارسال wink به {target_username}: {e}")
 
-    async def cmd_wave(self, user: User, message: str):
-        parts = message.lower().split()
+    async def cmd_wave(self, user: User, parts: list):
+        parts = [p.lower() for p in parts]
         
         if parts[0] == "!wave" and len(parts) == 2 and parts[1] == "all":
             if user.username.lower() not in self.config["admin_usernames"]:
@@ -1734,8 +1738,8 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در ارسال wave: {e}")
             logger.error(f"خطا در ارسال wave به {target_username}: {e}")
 
-    async def cmd_thumbs(self, user: User, message: str):
-        parts = message.lower().split()
+    async def cmd_thumbs(self, user: User, parts: list):
+        parts = [p.lower() for p in parts]
         
         if parts[0] == "!thumbs" and len(parts) == 2 and parts[1] == "all":
             if user.username.lower() not in self.config["admin_usernames"]:
@@ -1807,7 +1811,7 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در ارسال thumbs-up: {e}")
             logger.error(f"خطا در ارسال thumbs-up به {target_username}: {e}")
 
-    async def cmd_wallet(self, user: User, message: str):
+    async def cmd_wallet(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             return
@@ -1831,12 +1835,12 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(self.get_message("wallet_error", error=str(e)))
             logger.error(f"خطا در دریافت موجودی: {e}")
 
-    async def cmd_tip(self, user: User, message: str):
+    async def cmd_tip(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             return
 
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         if len(parts) != 3 or not parts[1].isdigit() or parts[2] != "all":
             await self.highrise.chat(self.get_message("invalid_format", format="!tip <تعداد> all (تعداد: 1، 5، 10، 50، 100)"))
             return
@@ -1917,7 +1921,7 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطای ناشناخته: {e}")
             logger.error(f"خطا در cmd_tip: {e}")
 
-    async def cmd_set(self, user: User, message: str):
+    async def cmd_set(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             return
@@ -1934,7 +1938,7 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در تلپورت ربات: {e}")
             logger.error(f"خطا در cmd_set: {e}")
 
-    async def cmd_vip(self, user: User, message: str):
+    async def cmd_vip(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             return
@@ -1948,7 +1952,7 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(self.get_message("teleport_error", error=str(e)))
             logger.error(f"خطا در cmd_vip: {e}")
 
-    async def cmd_vip1(self, user: User, message: str):
+    async def cmd_vip1(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             return
@@ -1962,7 +1966,7 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(self.get_message("teleport_error", error=str(e)))
             logger.error(f"خطا در cmd_vip1: {e}")
 
-    async def cmd_dj(self, user: User, message: str):
+    async def cmd_dj(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             return
@@ -1976,7 +1980,7 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(self.get_message("teleport_error", error=str(e)))
             logger.error(f"خطا در cmd_dj: {e}")
 
-    async def cmd_down(self, user: User, message: str):
+    async def cmd_down(self, user: User, parts: list):
         try:
             dest = Position(x=2.0, y=0.5, z=1.5)
             await self.highrise.teleport(user_id=user.id, dest=dest)
@@ -1986,11 +1990,11 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(self.get_message("teleport_error", error=str(e)))
             logger.error(f"خطا در cmd_down: {e}")
 
-    async def cmd_ban(self, user: User, message: str):
+    async def cmd_ban(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             return
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         if len(parts) != 2 or not parts[1].startswith("@"):
             await self.highrise.chat(self.get_message("invalid_format", format="!ban @username"))
             return
@@ -2004,13 +2008,13 @@ class AdvancedBot(BaseBot):
         await self.highrise.chat(self.get_message("ban_success", username=target_username))
         logger.info(f"کاربر {target_username} توسط {user.username} بن شد.")
 
-    async def cmd_unban(self, user: User, message: str):
+    async def cmd_unban(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !unban را ندارد.")
             return
 
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         if len(parts) != 2 or not parts[1].startswith("@"):
             await self.highrise.chat(self.get_message("invalid_format", format="!unban @username"))
             logger.info(f"فرمت نادرست برای دستور !unban توسط {user.username} وارد شد.")
@@ -2031,7 +2035,7 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در آنبن کردن کاربر @{target_username}: {str(e)}")
             logger.error(f"خطا در cmd_unban برای {target_username}: {str(e)}")
 
-    async def cmd_dancechain(self, user: User, message: str):
+    async def cmd_dancechain(self, user: User, parts: list):
         dance_list = ["dance-tiktok8", "dance-blackpink", "dance-tiktok2"]
         for emote in dance_list:
             await self.highrise.send_emote(emote, user.id)
@@ -2039,11 +2043,11 @@ class AdvancedBot(BaseBot):
         await self.highrise.chat(self.get_message("dancechain_success", username=user.username))
         logger.info(f"زنجیره رقص برای {user.username} اجرا شد.")
 
-    async def cmd_addtele(self, user: User, message: str):
+    async def cmd_addtele(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             return
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         if len(parts) != 2:
             await self.highrise.chat(self.get_message("invalid_format", format="!addtele نام_مکان"))
             return
@@ -2057,13 +2061,13 @@ class AdvancedBot(BaseBot):
         await self.highrise.chat(self.get_message("addtele_success", location=location_name))
         logger.info(f"مکان {location_name} توسط {user.username} اضافه شد.")
 
-    async def cmd_deltele(self, user: User, message: str):
+    async def cmd_deltele(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !deltele را ندارد.")
             return
 
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         if len(parts) != 2:
             await self.highrise.chat(self.get_message("invalid_format", format="!deltele نام_مکان"))
             logger.info(f"فرمت نادرست برای دستور !deltele توسط {user.username} وارد شد.")
@@ -2089,13 +2093,13 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در حذف مکان {location_name}: {str(e)}")
             logger.error(f"خطا در cmd_deltele برای {location_name}: {str(e)}")
 
-    async def cmd_set_item(self, user: User, message: str):
+    async def cmd_set_item(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !item set را ندارد.")
             return
 
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         if len(parts) != 3 or not parts[2].startswith("@"):
             await self.highrise.chat(self.get_message("invalid_format", format="!item set @username"))
             logger.info(f"فرمت نادرست برای دستور !item set توسط {user.username} وارد شد.")
@@ -2123,13 +2127,13 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در تغییر ظاهر ربات: {str(e)}")
             logger.error(f"خطا در cmd_set_item برای {target_username}: {str(e)}")
 
-    async def cmd_welcome(self, user: User, message: str):
+    async def cmd_welcome(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !welcome را ندارد.")
             return
 
-        parts = message.split(maxsplit=1)
+        parts = parts[:1] + ([" ".join(parts[1:])] if len(parts) > 1 else [])
         if len(parts) < 2:
             await self.highrise.chat(self.get_message("invalid_format", format="!welcome پیام"))
             logger.info(f"فرمت نادرست برای دستور !welcome توسط {user.username} وارد شد.")
@@ -2141,13 +2145,13 @@ class AdvancedBot(BaseBot):
         await self.highrise.chat(f"پیام خوش‌آمدگویی به '{welcome_message}' تغییر کرد.")
         logger.info(f"پیام خوش‌آمدگویی توسط {user.username} به '{welcome_message}' تغییر کرد.")
 
-    async def cmd_addadmin(self, user: User, message: str):
+    async def cmd_addadmin(self, user: User, parts: list):
         if user.username.lower() != "ad0ri":
             await self.highrise.chat("فقط ad0ri می‌تواند از این دستور استفاده کند!")
             logger.info(f"کاربر {user.username} سعی کرد !addadmin را اجرا کند اما دسترسی ندارد.")
             return
 
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         if len(parts) != 2 or not parts[1].startswith("@"):
             await self.highrise.chat(self.get_message("invalid_format", format="!addadmin @username"))
             logger.info(f"فرمت نادرست برای دستور !addadmin توسط {user.username} وارد شد.")
@@ -2168,13 +2172,13 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در افزودن ادمین @{target_username}: {str(e)}")
             logger.error(f"خطا در cmd_addadmin برای {target_username}: {str(e)}")
 
-    async def cmd_removeadmin(self, user: User, message: str):
+    async def cmd_removeadmin(self, user: User, parts: list):
         if user.username.lower() != "ad0ri":
             await self.highrise.chat("فقط ad0ri می‌تواند از این دستور استفاده کند!")
             logger.info(f"کاربر {user.username} سعی کرد !removeadmin را اجرا کند اما دسترسی ندارد.")
             return
 
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         if len(parts) != 2 or not parts[1].startswith("@"):
             await self.highrise.chat(self.get_message("invalid_format", format="!removeadmin @username"))
             logger.info(f"فرمت نادرست برای دستور !removeadmin توسط {user.username} وارد شد.")
@@ -2200,7 +2204,7 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در حذف ادمین @{target_username}: {str(e)}")
             logger.error(f"خطا در cmd_removeadmin برای {target_username}: {str(e)}")
 
-    async def cmd_listadd(self, user: User, message: str):
+    async def cmd_listadd(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !listadd را ندارد.")
@@ -2218,13 +2222,13 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در نمایش لیست ادمین‌ها: {str(e)}")
             logger.error(f"خطا در cmd_listadd: {str(e)}")
 
-    async def cmd_freeze(self, user: User, message: str):
+    async def cmd_freeze(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !freeze را ندارد.")
             return
 
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         if len(parts) != 2 or not parts[1].startswith("@"):
             await self.highrise.chat(self.get_message("invalid_format", format="!freeze @username"))
             logger.info(f"فرمت نادرست برای دستور !freeze توسط {user.username} وارد شد.")
@@ -2267,13 +2271,13 @@ class AdvancedBot(BaseBot):
         await self.highrise.chat(self.get_message("freeze_success", username=target_username))
         logger.info(f"کاربر {target_username} توسط {user.username} فریز شد.")
 
-    async def cmd_unfreeze(self, user: User, message: str):
+    async def cmd_unfreeze(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !unfreeze را ندارد.")
             return
 
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         if len(parts) != 2 or not parts[1].startswith("@"):
             await self.highrise.chat(self.get_message("invalid_format", format="!unfreeze @username"))
             logger.info(f"فرمت نادرست برای دستور !unfreeze توسط {user.username} وارد شد.")
@@ -2295,11 +2299,11 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در آزاد کردن @{target_username}: {str(e)}")
             logger.error(f"خطا در cmd_unfreeze برای {target_username}: {str(e)}")
 
-    async def cmd_party(self, user: User, message: str):
+    async def cmd_party(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             return
-        parts = message.split()
+        # parts already a list
         if len(parts) < 2:
             await self.highrise.chat("فرمت اشتباه است. مثال: !party 1 یا !party all 1 یا !party stop")
             return
@@ -2395,13 +2399,13 @@ class AdvancedBot(BaseBot):
             else:
                 await self.highrise.chat(f"کاربر {target_username} در اتاق پیدا نشد.")
 
-    async def cmd_partys(self, user: User, message: str):
+    async def cmd_partys(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !partys را ندارد.")
             return
 
-        parts = message.lower().split()
+        parts = [p.lower() for p in parts]
         if len(parts) != 2 or not parts[1].startswith("@"):
             await self.highrise.chat(self.get_message("invalid_format", format="!partys @username"))
             logger.info(f"فرمت نادرست برای دستور !partys توسط {user.username} وارد شد.")
@@ -2421,38 +2425,6 @@ class AdvancedBot(BaseBot):
         except Exception as e:
             await self.highrise.chat(f"خطا در توقف رقص برای @{target_username}: {str(e)}")
             logger.error(f"خطا در cmd_partys برای {target_username}: {str(e)}")
-
-    async def cmd_changeroom(self, user: User, parts: list):
-        # فقط ادمین می‌تونه این کامند رو بزنه
-        if user.username.lower() not in [a.lower() for a in self.config.get("admin_usernames", [])]:
-            await self.highrise.chat("⛔ فقط ادمین می‌تونه روم رو عوض کنه!")
-            return
-
-        if len(parts) < 2:
-            await self.highrise.chat("❌ فرمت صحیح: !changeroom [room_id]")
-            return
-
-        new_room_id = parts[1].strip()
-        current_room_id = os.getenv("ROOM_ID", "")
-
-        await self.highrise.chat(f"⏳ در حال تلاش برای ورود به روم {new_room_id} ...")
-        logger.info(f"تلاش برای تغییر روم به: {new_room_id}")
-
-        try:
-            # ذخیره room_id جدید در محیط
-            os.environ["ROOM_ID"] = new_room_id
-            # ترک روم فعلی — باعث reconnect در main() میشه با ROOM_ID جدید
-            await self.highrise.leave_room()
-            logger.info(f"روم تغییر کرد به: {new_room_id}")
-        except Exception as e:
-            logger.error(f"خطا در تغییر روم: {e}")
-            # برگشت به روم قبلی
-            os.environ["ROOM_ID"] = current_room_id
-            await self.highrise.chat(f"❌ نتونستم وارد روم بشم، برگشتم به روم قبلی.")
-            try:
-                await self.highrise.leave_room()
-            except Exception:
-                pass
 
 async def handle_ping(request):
     return aiohttp.web.Response(text="Bot is Alive!")
@@ -2528,17 +2500,13 @@ async def main():
     attempt = 0
     while attempt < max_reconnect_attempts:
         try:
-            # هر بار room_id رو از محیط می‌خونه تا !changeroom کار کنه
-            room_id = os.environ.get("ROOM_ID", room_id)
-            bot_instance = AdvancedBot()
-            bot_def = BotDefinition(room_id=room_id, api_token=api_token, bot=bot_instance)
-            logger.info(f"تلاش برای اتصال به سرور Highrise... روم: {room_id}")
+            logger.info("تلاش برای اتصال به سرور Highrise...")
             from highrise.__main__ import main as highrise_main
             await highrise_main([bot_def])
         except Exception as e:
             logger.error(f"اتصال WebSocket قطع شد یا خطا داد: {e}")
             try:
-                await bot_instance.cleanup_tasks()
+                await bot_def.bot.cleanup_tasks()
             except Exception:
                 pass
             attempt += 1
