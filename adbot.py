@@ -1106,20 +1106,6 @@ class AdvancedBot(BaseBot):
         await self.sync_room_users()
         self.announcement_task = create_task(self.announcement_loop())
         self.score_update_task = create_task(self.score_update_loop())
-        
-        # دنس خودکار بات وقتی وارد روم میشه - شماره یا نام دنس
-        async def bot_dance_loop():
-            try:
-                while True:
-                    # می‌تونی شماره دنس یا نام رو تغییر بدی
-                    await self.highrise.send_emote("1", self.user_id)
-                    await sleep(8.0)
-            except CancelledError:
-                logger.info("دنس ربات لغو شد.")
-            except Exception as e:
-                logger.error(f"خطا در دنس ربات: {e}")
-        
-        self.dance_tasks[self.user_id] = create_task(bot_dance_loop())
 
     async def on_user_join(self, user: User, position: Position):
         username = user.username.lower()
@@ -2430,7 +2416,6 @@ class AdvancedBot(BaseBot):
             logger.error(f"خطا در cmd_partys برای {target_username}: {str(e)}")
 
     async def cmd_changeroom(self, user: User, parts: list):
-        # تبدیل کل لیست ادمین‌ها به حروف کوچک برای جلوگیری از خطای دسترسی
         admins_lower = [admin.lower() for admin in self.config.get("admin_usernames", [])]
         if user.username.lower() not in admins_lower:
             await self.highrise.chat("❌ شما دسترسی لازم برای تغییر روم ربات را ندارید!")
@@ -2441,20 +2426,15 @@ class AdvancedBot(BaseBot):
             return
             
         new_room_id = parts[1].strip()
-        await self.highrise.chat(f"🔄 در حال انتقال ربات به روم جدید با آیدی: {new_room_id} ...")
+        await self.highrise.chat(f"🔄 در حال جابه‌جایی مستقیم به روم جدید... لطفا چند ثانیه صبر کنید.")
         logger.info(f"درخواست تغییر دستی روم به {new_room_id} توسط {user.username}")
         
-        # بروزرسانی آیدی در کل اسکلت اجرایی ربات برای جلوگیری از بازگشت به روم قبلی
+        # بروزرسانی آیدی در کل محیط اجرای ربات
         os.environ["ROOM_ID"] = new_room_id
         
-        # لغو تسک‌های جاری و بستن اتصال برای ورود خودکار به روم جدید
+        # لغو تسک‌ها و قطع اتصال فوری برای اجرای مجدد در روم جدید
         await self.cleanup_tasks()
-        # این متد به طور ایمن کانال ارتباطی را می‌بندد تا ری‌کانکتور رندر درجا روم جدید را لود کند
-        if hasattr(self, 'highrise') and hasattr(self.highrise, 'tg_channel'):
-            try:
-                self.highrise.tg_channel.close()
-            except Exception:
-                pass
+        raise ConnectionResetError("تغییر روم دستی از درون بازی؛ راه اندازی مجدد اتصال...")
 
     async def cmd_emotebot(self, user: User, parts: list):
         admins_lower = [admin.lower() for admin in self.config.get("admin_usernames", [])]
@@ -2468,10 +2448,9 @@ class AdvancedBot(BaseBot):
 
         input_emote = parts[1].strip().lower()
 
-        # پیدا کردن نام رسمی دنس از روی شماره یا نام مستعار وارد شده
+        # پیدا کردن نام رسمی دنس از روی شماره یا نام مستعار
         actual_emote_name = self.emotes.get(input_emote)
         
-        # اگر کاربر خودش نام رسمی را وارد کرده بود (مثلا dance-blackpink)
         if not actual_emote_name and input_emote in self.emotes.values():
             actual_emote_name = input_emote
 
@@ -2479,20 +2458,26 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat("❌ دنس یا شماره وارد شده در لیست دنس‌های ربات پیدا نشد!")
             return
 
-        # متوقف کردن دنس قبلی ربات در صورت وجود
+        # متوقف کردن لایو دنس قبلی ربات در صورت وجود
         if self.user_id in self.dance_tasks:
             self.dance_tasks[self.user_id].cancel()
             self.dance_tasks.pop(self.user_id, None)
 
-        await self.highrise.chat(f"✅ دنس ربات با موفقیت به [{input_emote}] تغییر یافت.")
-        logger.info(f"دنس ربات به {actual_emote_name} توسط {user.username} تغییر کرد.")
+        await self.highrise.chat(f"✅ دنس ربات روی حالت تکرار همیشگی (Loop) تنظیم شد: [{input_emote}]")
+        logger.info(f"دنس مداوم ربات به {actual_emote_name} توسط {user.username} تغییر کرد.")
 
-        # شروع حلقه دنس جدید با نام رسمی تایید شده توسط سرور
+        # به دست آوردن تایم دقیق دنس از لیست برای جلوگیری از ایستادن ربات و رفتن به حالت گوست
+        # اگر زمان دنس در لیست نبود، به طور پیش‌فرض روی ۷ ثانیه قرار می‌گیرد
+        duration = self.emote_durations.get(actual_emote_name, 7.0)
+        # کم کردن ۲ ثانیه برای اینکه ربات قبل از تمام شدن کامل دنس قبلی، دنس بعدی را شروع کند تا متوقف نشود
+        sleep_time = max(1.5, duration - 2.0)
+
+        # شروع حلقه دنس بدون وقفه
         async def new_emote_loop():
             try:
                 while True:
                     await self.highrise.send_emote(actual_emote_name, self.user_id)
-                    await sleep(8.0)
+                    await sleep(sleep_time)
             except CancelledError:
                 logger.info("دنس مداوم ربات لغو شد.")
             except Exception as e:
