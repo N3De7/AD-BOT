@@ -81,7 +81,8 @@ class AdvancedBot(BaseBot):
             "!unfreeze": self.cmd_unfreeze,
             "!party": self.cmd_party,
             "!partys": self.cmd_partys,
-            "!changeroom": self.cmd_changeroom
+            "!changeroom": self.cmd_changeroom,
+            "!emotebot": self.cmd_emotebot
         }
         self.emotes = {
             "1": "idle_zombie",
@@ -1008,7 +1009,7 @@ class AdvancedBot(BaseBot):
         messages = {
             "fa": {
                 "welcome": self.config["welcome_message"],
-                "invalid_command": "برای زدن دنس از عدد ۱ تا ۲۲۱ می توانید استفاده کنید ✨.",
+                "invalid_command": "❌ دستور نامعلوم! برای دیدن دستورات بات !help استفاده کنید یا به @ad0ri پیام بدید.",
                 "no_permission": "فقط ادمین‌ها می‌توانند از این دستور استفاده کنند!",
                 "user_not_found": "کاربر {username} آنلاین نیست.",
                 "invalid_format": "فرمت نادرست: {format}",
@@ -1106,18 +1107,19 @@ class AdvancedBot(BaseBot):
         self.announcement_task = create_task(self.announcement_loop())
         self.score_update_task = create_task(self.score_update_loop())
         
-        # دنس فلوس خودکار بات وقتی وارد روم میشه
-        async def floss_dance_loop():
+        # دنس خودکار بات وقتی وارد روم میشه - شماره یا نام دنس
+        async def bot_dance_loop():
             try:
                 while True:
-                    await self.highrise.send_emote("floss", self.user_id)
-                    await sleep(9.0)
+                    # می‌تونی شماره دنس یا نام رو تغییر بدی
+                    await self.highrise.send_emote("1", self.user_id)
+                    await sleep(8.0)
             except CancelledError:
-                logger.info("دنس فلوس ربات لغو شد.")
+                logger.info("دنس ربات لغو شد.")
             except Exception as e:
-                logger.error(f"خطا در دنس فلوس ربات: {e}")
+                logger.error(f"خطا در دنس ربات: {e}")
         
-        self.dance_tasks[self.user_id] = create_task(floss_dance_loop())
+        self.dance_tasks[self.user_id] = create_task(bot_dance_loop())
 
     async def on_user_join(self, user: User, position: Position):
         username = user.username.lower()
@@ -2434,17 +2436,49 @@ class AdvancedBot(BaseBot):
         if len(parts) < 2:
             await self.highrise.chat("❌ فرمت صحیح: !changeroom room_id")
             return
+        
         new_room_id = parts[1].strip()
-        await self.highrise.chat(f"✅ درخواست تغییر روم ثبت شد. لطفاً منتظر بمانید...")
-        logger.info(f"تغییر روم درخواست شد به: {new_room_id} توسط {user.username}")
         
-        # Background task برای تغییر روم بدون block کردن
-        async def delayed_room_change():
+        # ذخیره در environment
+        os.environ["ROOM_ID"] = new_room_id
+        
+        await self.highrise.chat(f"✅ بات به روم جدید {new_room_id[:8]}... منتقل می‌شود. لطفاً صبر کنید...")
+        logger.info(f"درخواست تغییر روم به: {new_room_id} توسط {user.username}")
+        
+        # بعد ۲ ثانیه exception پرتاب کن تا reconnect شه
+        async def delayed_change():
             await sleep(2)
-            os.environ["ROOM_ID"] = new_room_id
-            raise Exception(f"Room change to {new_room_id}")
+            raise Exception(f"Reconnecting to room {new_room_id}")
         
-        create_task(delayed_room_change())
+        create_task(delayed_change())
+
+    async def cmd_emotebot(self, user: User, parts: list):
+        if len(parts) < 2:
+            await self.highrise.chat("❌ فرمت صحیح: !emotebot emote_name")
+            return
+        
+        emote_name = parts[1].strip()
+        
+        # متوقف کردن دنس قبلی بات
+        if self.user_id in self.dance_tasks:
+            self.dance_tasks[self.user_id].cancel()
+            del self.dance_tasks[self.user_id]
+        
+        await self.highrise.chat(f"✅ دنس بات تغییر کرد به: {emote_name}")
+        logger.info(f"دنس بات تغییر کرد به: {emote_name} توسط {user.username}")
+        
+        # شروع دنس جدید
+        async def new_emote_loop():
+            try:
+                while True:
+                    await self.highrise.send_emote(emote_name, self.user_id)
+                    await sleep(8.0)
+            except CancelledError:
+                logger.info("دنس بات لغو شد.")
+            except Exception as e:
+                logger.error(f"خطا در دنس بات: {e}")
+        
+        self.dance_tasks[self.user_id] = create_task(new_emote_loop())
 
 async def handle_ping(request):
     return aiohttp.web.Response(text="Bot is Alive!")
