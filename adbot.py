@@ -2460,7 +2460,7 @@ class AdvancedBot(BaseBot):
             logger.error(f"خطا در cmd_partys برای {target_username}: {str(e)}")
 
     async def cmd_find_emote(self, user: User, parts: list):
-        """دستور جستجوی آیدی سروری دنس بدون نیاز به متد قدیمی get_emotes"""
+        """اتصال مستقیم به API زنده هایرایز برای جستجوی ۱۰۰٪ تمام دنس‌های بازی"""
         admins_lower = [admin.lower() for admin in self.config.get("admin_usernames", [])]
         if user.username.lower() not in admins_lower:
             return
@@ -2470,31 +2470,39 @@ class AdvancedBot(BaseBot):
             return
 
         search_keyword = " ".join(parts[1:]).lower()
-        
-        # 📚 لیست کامل و رسمی تمام دنس‌های استراحت، خوابیدن و نشستن در هایرایز همراه با آیدی سروری
-        all_rest_emotes = {
-            "Rest (استراحت پایه)": "emote-rest",
-            "Sit (نشستن معمولی)": "emote-sit",
-            "Lay (دراز کشیدن)": "emote-lay",
-            "Tired (خسته روی زمین)": "emote-tired",
-            "Sleepy (خواب‌آلود)": "emote-sleepy",
-            "Sleeping (خوابیدن روی شکم)": "emote-sleeping",
-            "Floor Sleep (خوابیدن کف زمین)": "emote-floorsleep",
-            "Dead (ولو شدن/بیهوش)": "emote-dead",
-            "Relax (ریلکس کردن)": "emote-relax",
-            "Meditation (مدیتیشن/چهارزانو)": "emote-meditation"
-        }
+        await self.highrise.chat(f"🔍 در حال جستجوی زنده کل دیتابیس بازی برای '{search_keyword}'...")
 
-        # جستجو در لیست بالا
-        found_emotes = []
-        for title, emote_id in all_rest_emotes.items():
-            if search_keyword in title.lower() or search_keyword in emote_id.lower():
-                found_emotes.append(f"{title}: {emote_id}")
+        try:
+            # 🌐 اتصال مستقیم به سرور مرکزی وب هایرایز برای دریافت لیست کامل و زنده دنس‌ها
+            async with aiohttp.ClientSession() as session:
+                async with session.get("https://webapi.highrise.game/emotes?limit=1000") as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        emotes_list = data.get("emotes", [])
+                    else:
+                        emotes_list = []
+            
+            found_emotes = []
+            for emote in emotes_list:
+                # گرفتن اطلاعات اسم نمایشی و آیدی سروری دنس
+                title = emote.get("title", "") if isinstance(emote, dict) else getattr(emote, "title", "")
+                emote_id = emote.get("id", "") if isinstance(emote, dict) else getattr(emote, "id", "")
+                
+                if not emote_id:
+                    continue
+                    
+                if search_keyword in title.lower() or search_keyword in emote_id.lower():
+                    found_emotes.append(f"{title}: {emote_id}")
 
-        if found_emotes:
-            await self.highrise.chat("📌 دنس‌های استراحت یافت شده:\n" + "\n".join(found_emotes[:5]))
-        else:
-            await self.highrise.chat(f"❌ دنس استراحتی با کلمه '{search_keyword}' در دیتابیس یافت نشد!")
+            if found_emotes:
+                # فرستادن ۵ نتیجه اول در چت برای شلوغ نشدن روم
+                await self.highrise.chat("📌 نتایج زنده یافت شده:\n" + "\n".join(found_emotes[:5]))
+            else:
+                await self.highrise.chat("❌ این دنس در کل سرورهای هایرایز پیدا نشد!")
+
+        except Exception as e:
+            logger.error(f"خطا در جستجوی آنلاین دنس: {e}")
+            await self.highrise.chat("❌ مشکلی در ارتباط زنده با سرور مرکزی رخ داد.")
 
     async def cmd_loopchat(self, user: User, parts: list):
         admins_lower = [admin.lower() for admin in self.config.get("admin_usernames", [])]
