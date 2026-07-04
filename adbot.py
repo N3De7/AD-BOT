@@ -334,6 +334,8 @@ class AdvancedBot(BaseBot):
             "246": "emote-hero",
             "247": "dance-shuffle",
             "248": "emote-knocking-screen",
+            "249": "emote-alice-shrink",
+            "250": "emote-threadexchange-star",
             "۱": "idle_zombie",
             "۲": "idle_layingdown2",
             "۳": "idle_layingdown",
@@ -582,6 +584,8 @@ class AdvancedBot(BaseBot):
             "۲۴۶": "emote-hero",
             "۲۴۷": "dance-shuffle",
             "۲۴۸": "emote-knocking-screen",
+            "۲۴۹": "emote-alice-shrink",
+            "۲۵۰": "emote-threadexchange-star",
             "zombie": "idle_zombie",
             "relaxed": "idle_layingdown2",
             "attentive": "idle_layingdown",
@@ -803,7 +807,9 @@ class AdvancedBot(BaseBot):
             "relaxing": "idle-floorsleeping2",
             "attention": "emote-salute",
             "floss": "dance-floss",
-            "rest": "sit-idle-cute"
+            "rest": "sit-idle-cute",
+            "aliceshrink": "emote-alice-shrink",
+            "threadexchangestar": "emote-threadexchange-star"
         }
 
         self.emote_durations = {
@@ -1028,7 +1034,9 @@ class AdvancedBot(BaseBot):
             "emote-cutesalute": 15.0,
             "emote-salute": 15.0,
             "dance-floss": 11.0,
-            "emote-dead": 6.0
+            "emote-dead": 6.0,
+            "emote-alice-shrink": 15.0,
+            "emote-threadexchange-star": 15.0
         }
 
     def load_config(self):
@@ -1329,11 +1337,9 @@ class AdvancedBot(BaseBot):
         await self.stop_dance(user)
         self.user_dances[username] = emote
         duration = self.emote_durations.get(emote, 15.0)
-        # ⚡ اصلاح ترفند تاخیر: کم کردن فقط 0.3 ثانیه برای جبران تاخیر شبکه و اجرای کامل دنس
-        if duration > 1.0:
-            sleep_time = duration - 0.3
-        else:
-            sleep_time = duration
+        # ⚡ تضمین اجرای کامل دنس: به‌جای کم کردن، یک ثانیه به زمان اضافه می‌کنیم
+        # تا حتی اگه مدت‌زمان ثبت‌شده کمی کمتر از واقعیت باشه، دنس هیچ‌وقت وسط اجرا قطع نشه
+        sleep_time = duration + 1.0
 
         async def dance_loop():
             try:
@@ -2577,11 +2583,8 @@ class AdvancedBot(BaseBot):
         # دریافت زمان واقعی دنس از دیتابیس ربات
         duration = self.emote_durations.get(actual_emote_name, 15.0)
         
-        # ⚡ اصلاح ترفند تاخیر: کم کردن فقط 0.3 ثانیه برای جبران تاخیر شبکه و اجرای کامل دنس
-        if duration > 1.0:
-            sleep_time = duration - 0.3
-        else:
-            sleep_time = duration
+        # ⚡ تضمین اجرای کامل دنس: به‌جای کم کردن، یک ثانیه به زمان اضافه می‌کنیم
+        sleep_time = duration + 1.0
 
         # شروع حلقه دنس بدون وقفه و روان
         async def new_emote_loop():
