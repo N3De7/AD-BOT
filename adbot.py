@@ -1301,6 +1301,8 @@ class AdvancedBot(BaseBot):
                 await self.start_dance(user, self.emotes[msg_lower])
             elif msg_lower in ["stop", "استوپ"]:
                 await self.stop_dance(user)
+            elif msg_lower in ["سازنده", "creature", "creator", "سازندت", "سازنده بات"]:
+                await self.highrise.chat("👑 سازنده این بات: @ad0ri 👑")
             elif msg_lower.startswith("!"):
                 parts = msg.split()
                 parts_lower = [p.lower() for p in parts]
@@ -1427,8 +1429,8 @@ class AdvancedBot(BaseBot):
             "!welcome پیام - تنظیم پیام خوش‌آمدگویی\n"
             "!addadmin @username - افزودن ادمین (فقط Host)\n"
             "!removeadmin @username - حذف ادمین (فقط Host)\n"
-            "!addhost @username - افزودن Host (فقط Host)\n"
-            "!removehost @username - حذف Host (فقط Host)\n"
+            "!emotebot نام/شماره_دنس - تغییر دنس مداوم ربات (فقط ادمین)\n"
+            "!loopchat پیام - تنظیم پیام تکرارشونده/اسپم ربات (فقط ادمین)\n"
             "!listadd - نمایش لیست ادمین‌ها\n"
             "!freeze @username - فریز کردن کاربر\n"
             "!unfreeze @username - آزاد کردن کاربر از فریز\n"
@@ -2334,9 +2336,10 @@ class AdvancedBot(BaseBot):
             logger.error(f"خطا در cmd_removeadmin برای {target_username}: {str(e)}")
 
     async def cmd_addhost(self, user: User, parts: list):
-        """فقط Host می‌تواند Host جدید اضافه کند (بالاترین رتبه دسترسی، بالاتر از ادمین و VIP)."""
-        if not self.is_host(user.username):
-            await self.highrise.chat("فقط Host می‌تواند از این دستور استفاده کند!")
+        """⚠️ اختصاصی: فقط خود مالک اصلی بات (ad0ri) می‌تواند رتبه Host بدهد؛
+        حتی سایر Host‌ها هم اجازه اجرای این دستور را ندارند."""
+        if user.username.lower() != "ad0ri":
+            await self.highrise.chat("❌ دسترسی غیرمجاز!")
             logger.info(f"کاربر {user.username} سعی کرد !addhost را اجرا کند اما دسترسی ندارد.")
             return
 
@@ -2363,9 +2366,9 @@ class AdvancedBot(BaseBot):
             logger.error(f"خطا در cmd_addhost برای {target_username}: {str(e)}")
 
     async def cmd_removehost(self, user: User, parts: list):
-        """فقط Host می‌تواند رتبه Host را از کسی حذف کند."""
-        if not self.is_host(user.username):
-            await self.highrise.chat("فقط Host می‌تواند از این دستور استفاده کند!")
+        """⚠️ اختصاصی: فقط خود مالک اصلی بات (ad0ri) می‌تواند رتبه Host را بگیرد."""
+        if user.username.lower() != "ad0ri":
+            await self.highrise.chat("❌ دسترسی غیرمجاز!")
             logger.info(f"کاربر {user.username} سعی کرد !removehost را اجرا کند اما دسترسی ندارد.")
             return
 
