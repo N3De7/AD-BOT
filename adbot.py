@@ -1243,7 +1243,7 @@ class AdvancedBot(BaseBot):
                 self.user_positions[username] = user_data[1]
             
             logger.info(f"همگام‌سازی کاربران انجام شد. تعداد کاربران: {len(self.active_users)}. کاربران: {[user.username for user in self.active_users.values()]}")
-            await self.highrise.chat(f"{len(self.active_users)} کاربر در روم شناسایی شدند.")
+            await self.highrise.chat(f"{len(self.active_users)} user here? hellooo.")
         except Exception as e:
             logger.error(f"خطا در همگام‌سازی کاربران: {e}", exc_info=True)
             await self.highrise.chat("خطا در شناسایی کاربران روم.")
