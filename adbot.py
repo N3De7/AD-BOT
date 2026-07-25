@@ -339,6 +339,7 @@ class AdvancedBot(BaseBot):
             "248": "emote-knocking-screen",
             "249": "emote-alice-shrink",
             "250": "emote-threadexchange-star",
+            "251": "dance-SelfieTime",
             "۱": "idle_zombie",
             "۲": "idle_layingdown2",
             "۳": "idle_layingdown",
