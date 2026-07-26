@@ -76,7 +76,7 @@ class AdvancedBot(BaseBot):
             "!dancechain": self.cmd_dancechain,
             "!addtele": self.cmd_addtele,
             "!deltele": self.cmd_deltele,
-            "!item set": self.cmd_set_item,
+            "!botfit": self.cmd_set_item,
             "!welcome": self.cmd_welcome,
             "!addadmin": self.cmd_addadmin,
             "!removeadmin": self.cmd_removeadmin,
@@ -1349,7 +1349,7 @@ class AdvancedBot(BaseBot):
                 if len(parts_lower) == 1:
                     cmd = parts_lower[0]
                 elif parts_lower[0] == "!item" and len(parts_lower) > 1 and parts_lower[1] == "set":
-                    cmd = "!item set"
+                    cmd = "!botfit"
                 elif parts_lower[0] == "!create" and len(parts_lower) > 1 and parts_lower[1] == "jail":
                     cmd = "!create jail"
                 else:
@@ -1463,7 +1463,7 @@ class AdvancedBot(BaseBot):
     "!thumbs all - Send thumbs-up to everyone\n"
     "!wallet - Show bot wallet balance\n"
     "!set - Teleport bot to admin\n"
-    "!item set @username - Copy user's outfit to the bot\n"
+    "!botfit @username - Copy user's outfit to the bot\n"
     "!tip @username <amount> - Tip a single user\n"
     "!tip <amount> all - Tip everyone\n"
     "!vip - Teleport to VIP\n"
@@ -2345,13 +2345,13 @@ class AdvancedBot(BaseBot):
     async def cmd_set_item(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
-            logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !item set را ندارد.")
+            logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !botfit را ندارد.")
             return
 
         parts = [p.lower() for p in parts]
         if len(parts) != 3 or not parts[2].startswith("@"):
-            await self.highrise.chat(self.get_message("invalid_format", format="!item set @username"))
-            logger.info(f"فرمت نادرست برای دستور !item set توسط {user.username} وارد شد.")
+            await self.highrise.chat(self.get_message("invalid_format", format="!botfit @username"))
+            logger.info(f"فرمت نادرست برای دستور !botfit توسط {user.username} وارد شد.")
             return
 
         target_username = parts[2][1:].lower()
