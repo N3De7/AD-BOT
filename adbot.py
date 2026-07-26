@@ -1464,6 +1464,7 @@ class AdvancedBot(BaseBot):
     "!wallet - Show bot wallet balance\n"
     "!set - Teleport bot to admin\n"
     "!item set @username - Copy user's outfit to the bot\n"
+    "!tip @username <amount> - Tip a single user\n"
     "!tip <amount> all - Tip everyone\n"
     "!vip - Teleport to VIP\n"
     "!vip1 - Teleport to VIP1\n"
@@ -2019,86 +2020,155 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(self.get_message("no_permission"))
             return
 
-        parts = [p.lower() for p in parts]
-        if len(parts) != 3 or not parts[1].isdigit() or parts[2] != "all":
-            await self.highrise.chat(self.get_message("invalid_format", format="!tip <تعداد> all (تعداد: 1، 5، 10، 50، 100)"))
+        parts_lower = [p.lower() for p in parts]
+
+        # ─── حالت تیپ تکی: !tip @username <amount> ───────────────────────────
+        if len(parts_lower) == 3 and parts_lower[1].startswith("@") and parts_lower[2].isdigit():
+            target_username = parts_lower[1][1:]
+            target_user = self.active_users.get(target_username)
+            if not target_user:
+                await self.highrise.chat(self.get_message("user_not_found", username=target_username))
+                return
+
+            try:
+                tip_amount = int(parts_lower[2])
+                if tip_amount not in [1, 5, 10, 50, 100]:
+                    await self.highrise.chat("مقدار گلد باید 1، 5، 10، 50 یا 100 باشد.")
+                    return
+
+                gold_bar_map = {
+                    1: "gold_bar_1",
+                    5: "gold_bar_5",
+                    10: "gold_bar_10",
+                    50: "gold_bar_50",
+                    100: "gold_bar_100"
+                }
+                gold_bar_item = gold_bar_map[tip_amount]
+
+                wallet = await self.highrise.get_wallet()
+                gold_amount = 0
+                if hasattr(wallet, "content") and isinstance(wallet.content, list):
+                    for item in wallet.content:
+                        if hasattr(item, "type") and item.type == "gold" and hasattr(item, "amount"):
+                            gold_amount = item.amount
+                            break
+                else:
+                    logger.error("ساختار wallet ناشناخته است.")
+                    await self.highrise.chat("خطا: ساختار پاسخ wallet ناشناخته است.")
+                    return
+
+                if gold_amount < tip_amount:
+                    await self.highrise.chat(
+                        f"موجودی ربات ({gold_amount} گلد) برای تیپ {tip_amount} گلد کافی نیست."
+                    )
+                    return
+
+                response = await self.highrise.tip_user(target_user.id, gold_bar_item)
+                if hasattr(response, "error"):
+                    raise Exception(f"خطای API: {response.error}")
+
+                await self.highrise.chat(self.get_message("tip_success", amount=tip_amount, username=target_user.username))
+                logger.info(f"ارسال {tip_amount} گلد به {target_user.username} موفقیت‌آمیز بود.")
+
+                # نمایش موجودی جدید
+                wallet = await self.highrise.get_wallet()
+                new_gold = 0
+                if hasattr(wallet, "content") and isinstance(wallet.content, list):
+                    for item in wallet.content:
+                        if hasattr(item, "type") and item.type == "gold" and hasattr(item, "amount"):
+                            new_gold = item.amount
+                            break
+                await self.highrise.chat(f"موجودی جدید ربات: {new_gold} گلد")
+                logger.info(f"موجودی جدید ربات: {new_gold} گلد")
+
+            except Exception as e:
+                await self.highrise.chat(f"خطا در تیپ به @{target_username}: {e}")
+                logger.error(f"خطا در cmd_tip (تکی) برای {target_username}: {e}")
             return
 
-        try:
-            tip_amount = int(parts[1])
-            if tip_amount not in [1, 5, 10, 50, 100]:
-                await self.highrise.chat("مقدار گلد باید 1، 5، 10، 50 یا 100 باشد.")
-                return
+        # ─── حالت تیپ همگانی: !tip <amount> all ─────────────────────────────
+        if len(parts_lower) == 3 and parts_lower[1].isdigit() and parts_lower[2] == "all":
+            try:
+                tip_amount = int(parts_lower[1])
+                if tip_amount not in [1, 5, 10, 50, 100]:
+                    await self.highrise.chat("مقدار گلد باید 1، 5، 10، 50 یا 100 باشد.")
+                    return
 
-            gold_bar_map = {
-                1: "gold_bar_1",
-                5: "gold_bar_5",
-                10: "gold_bar_10",
-                50: "gold_bar_50",
-                100: "gold_bar_100"
-            }
-            gold_bar_item = gold_bar_map.get(tip_amount)
-            if not gold_bar_item:
-                await self.highrise.chat(f"مقدار {tip_amount} پشتیبانی نمی‌شود.")
-                return
+                gold_bar_map = {
+                    1: "gold_bar_1",
+                    5: "gold_bar_5",
+                    10: "gold_bar_10",
+                    50: "gold_bar_50",
+                    100: "gold_bar_100"
+                }
+                gold_bar_item = gold_bar_map[tip_amount]
 
-            wallet = await self.highrise.get_wallet()
-            gold_amount = 0
-            if hasattr(wallet, "content") and isinstance(wallet.content, list):
-                for item in wallet.content:
-                    if hasattr(item, "type") and item.type == "gold" and hasattr(item, "amount"):
-                        gold_amount = item.amount
-                        break
-            else:
-                logger.error("ساختار wallet ناشناخته است.")
-                await self.highrise.chat("خطا: ساختار پاسخ wallet ناشناخته است.")
-                return
+                wallet = await self.highrise.get_wallet()
+                gold_amount = 0
+                if hasattr(wallet, "content") and isinstance(wallet.content, list):
+                    for item in wallet.content:
+                        if hasattr(item, "type") and item.type == "gold" and hasattr(item, "amount"):
+                            gold_amount = item.amount
+                            break
+                else:
+                    logger.error("ساختار wallet ناشناخته است.")
+                    await self.highrise.chat("خطا: ساختار پاسخ wallet ناشناخته است.")
+                    return
 
-            active_users = [u for u in self.active_users.values() if u.id != self.user_id]
-            active_users_count = len(active_users)
-            total_needed = tip_amount * active_users_count
+                active_users = [u for u in self.active_users.values() if u.id != self.user_id]
+                active_users_count = len(active_users)
+                total_needed = tip_amount * active_users_count
 
-            if gold_amount < total_needed:
-                await self.highrise.chat(
-                    f"موجودی ربات ({gold_amount} گلد) برای تیپ {tip_amount} گلد به {active_users_count} نفر کافی نیست."
-                )
-                return
+                if gold_amount < total_needed:
+                    await self.highrise.chat(
+                        f"موجودی ربات ({gold_amount} گلد) برای تیپ {tip_amount} گلد به {active_users_count} نفر کافی نیست."
+                    )
+                    return
 
-            successful_tips = 0
-            for target_user in active_users:
-                if target_user.username.lower() not in self.active_users:
-                    logger.info(f"کاربر {target_user.username} در حین ارسال تیپ آفلاین شد.")
-                    continue
-                try:
-                    response = await self.highrise.tip_user(target_user.id, gold_bar_item)
-                    if hasattr(response, "error"):
-                        raise Exception(f"خطای API: {response.error}")
-                    successful_tips += 1
-                    await self.highrise.chat(self.get_message("tip_success", amount=tip_amount, username=target_user.username))
-                    logger.info(f"ارسال {tip_amount} گلد به {target_user.username} موفقیت‌آمیز بود.")
-                    await sleep(3.0)
-                except Exception as e:
-                    await self.highrise.chat(f"خطا در تیپ به @{target_user.username}: {e}")
-                    logger.error(f"خطا در تیپ به {target_user.username}: {e}")
+                successful_tips = 0
+                for target_user in active_users:
+                    if target_user.username.lower() not in self.active_users:
+                        logger.info(f"کاربر {target_user.username} در حین ارسال تیپ آفلاین شد.")
+                        continue
+                    try:
+                        response = await self.highrise.tip_user(target_user.id, gold_bar_item)
+                        if hasattr(response, "error"):
+                            raise Exception(f"خطای API: {response.error}")
+                        successful_tips += 1
+                        await self.highrise.chat(self.get_message("tip_success", amount=tip_amount, username=target_user.username))
+                        logger.info(f"ارسال {tip_amount} گلد به {target_user.username} موفقیت‌آمیز بود.")
+                        await sleep(3.0)
+                    except Exception as e:
+                        await self.highrise.chat(f"خطا در تیپ به @{target_user.username}: {e}")
+                        logger.error(f"خطا در تیپ به {target_user.username}: {e}")
 
-            if successful_tips > 0:
-                await self.highrise.chat(self.get_message("tip_all_success", amount=tip_amount, count=successful_tips))
-            else:
-                await self.highrise.chat("هیچ تیپی با موفقیت ارسال نشد.")
+                if successful_tips > 0:
+                    await self.highrise.chat(self.get_message("tip_all_success", amount=tip_amount, count=successful_tips))
+                else:
+                    await self.highrise.chat("هیچ تیپی با موفقیت ارسال نشد.")
 
-            wallet = await self.highrise.get_wallet()
-            gold_amount = 0
-            if hasattr(wallet, "content") and isinstance(wallet.content, list):
-                for item in wallet.content:
-                    if hasattr(item, "type") and item.type == "gold" and hasattr(item, "amount"):
-                        gold_amount = item.amount
-                        break
-            await self.highrise.chat(f"موجودی جدید ربات: {gold_amount} گلد")
-            logger.info(f"موجودی جدید ربات: {gold_amount} گلد")
+                wallet = await self.highrise.get_wallet()
+                gold_amount = 0
+                if hasattr(wallet, "content") and isinstance(wallet.content, list):
+                    for item in wallet.content:
+                        if hasattr(item, "type") and item.type == "gold" and hasattr(item, "amount"):
+                            gold_amount = item.amount
+                            break
+                await self.highrise.chat(f"موجودی جدید ربات: {gold_amount} گلد")
+                logger.info(f"موجودی جدید ربات: {gold_amount} گلد")
 
-        except Exception as e:
-            await self.highrise.chat(f"خطای ناشناخته: {e}")
-            logger.error(f"خطا در cmd_tip: {e}")
+            except Exception as e:
+                await self.highrise.chat(f"خطای ناشناخته: {e}")
+                logger.error(f"خطا در cmd_tip: {e}")
+            return
+
+        # ─── فرمت نادرست ──────────────────────────────────────────────────────
+        await self.highrise.chat(
+            "فرمت نادرست!\n"
+            "تیپ تکی: !tip @username <مقدار>\n"
+            "تیپ همگانی: !tip <مقدار> all\n"
+            "(مقدار: 1، 5، 10، 50، 100)"
+        )
 
     async def cmd_set(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
