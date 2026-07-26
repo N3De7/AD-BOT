@@ -65,7 +65,7 @@ class AdvancedBot(BaseBot):
             "!wave": self.cmd_wave,
             "!thumbs": self.cmd_thumbs,
             "!wallet": self.cmd_wallet,
-            "!set": self.cmd_set,
+            "!bot": self.cmd_set,
             "!tip": self.cmd_tip,
             "!vip": self.cmd_vip,
             "!vip1": self.cmd_vip1,
@@ -1462,7 +1462,7 @@ class AdvancedBot(BaseBot):
     "!thumbs <count> @username - Send thumbs-up\n"
     "!thumbs all - Send thumbs-up to everyone\n"
     "!wallet - Show bot wallet balance\n"
-    "!set - Teleport bot to admin\n"
+    "!bot - Teleport bot to admin\n"
     "!botfit @username - Copy user's outfit to the bot\n"
     "!tip @username <amount> - Tip a single user\n"
     "!tip <amount> all - Tip everyone\n"
