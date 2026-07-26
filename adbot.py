@@ -32,10 +32,11 @@ DEFAULT_CONFIG = {
         "vip1": {"x": 14.5, "y": 16.75, "z": 5.5},
         "dj": {"x": 9.5, "y": 10.75, "z": 10.5}
     },
+    "jail_locations": {},
     "language": "fa",
     "welcome_message": "✨ 🌟 𝐖𝐞𝐥𝐜𝐨𝐦𝐞 {username} ❤️ 𝐆𝐥𝐚𝐝 𝐭𝐨 𝐡𝐚𝐯𝐞 𝐲𝐨𝐮 𝐡𝐞𝐫𝐞!\n🕺 🚀",
     "announcement_interval": 300,
-    "announcement_message": ""
+    "announcement_message": "!"
 }
 
 class AdvancedBot(BaseBot):
@@ -52,6 +53,7 @@ class AdvancedBot(BaseBot):
         self.score_update_task = None
         self.loopchat_task = None
         self.frozen_users = {}
+        self.jailed_users = {}
         self.party_dances = {}
         self.commands = {
             "!help": self.cmd_help,
@@ -83,6 +85,10 @@ class AdvancedBot(BaseBot):
             "!listadd": self.cmd_listadd,
             "!freeze": self.cmd_freeze,
             "!unfreeze": self.cmd_unfreeze,
+            "!jail": self.cmd_jail,
+            "!unjail": self.cmd_unjail,
+            "!create jail": self.cmd_create_jail,
+            "!removetele": self.cmd_removetele,
             "!party": self.cmd_party,
             "!partys": self.cmd_partys,
             "!emotebot": self.cmd_emotebot,
@@ -1122,6 +1128,15 @@ class AdvancedBot(BaseBot):
                 "freeze_success": "کاربر @{username} فریز شد!",
                 "unfreeze_success": "کاربر @{username} از حالت فریز آزاد شد!",
                 "unfreeze_not_frozen": "کاربر @{username} فریز نشده است!",
+                "jail_success": "🔒 کاربر @{username} به زندان {jail_name} منتقل شد!",
+                "unjail_success": "🔓 کاربر @{username} از زندان آزاد شد!",
+                "unjail_not_jailed": "کاربر @{username} در زندان نیست!",
+                "jail_no_location": "❌ هیچ مکان زندانی تعریف نشده! ابتدا با !create jail یک مکان زندان بساز.",
+                "jail_location_not_found": "❌ مکان زندان {jail_name} وجود ندارد!",
+                "create_jail_success": "✅ مکان زندان jail {slot} در موقعیت فعلی شما ذخیره شد!",
+                "removetele_jail_success": "✅ مکان زندان jail {slot} حذف شد!",
+                "removetele_jail_not_found": "❌ مکان زندان jail {slot} وجود ندارد!",
+                "jail_list_empty": "❌ هیچ مکان زندانی تعریف نشده است.",
                 "party_success": "رقص شماره {dance_number} برای @{username} فعال شد!",
                 "party_all_success": "رقص شماره {dance_number} برای {count} کاربر فعال شد!",
                 "partys_success": "رقص اجباری برای @{username} متوقف شد!",
@@ -1151,6 +1166,15 @@ class AdvancedBot(BaseBot):
                 except CancelledError:
                     pass
             self.frozen_users.clear()
+
+            for username, (task, _jail_name) in list(self.jailed_users.items()):
+                if not task.done():
+                    task.cancel()
+                try:
+                    await task
+                except CancelledError:
+                    pass
+            self.jailed_users.clear()
             
             if self.announcement_task and not self.announcement_task.done():
                 self.announcement_task.cancel()
@@ -1218,6 +1242,9 @@ class AdvancedBot(BaseBot):
         if username in self.frozen_users:
             self.frozen_users[username].cancel()
             self.frozen_users.pop(username, None)
+        if username in self.jailed_users:
+            task, _jail_name = self.jailed_users.pop(username)
+            task.cancel()
         await self.highrise.chat(f"@{user.username} از روم خارج شد.")
         logger.info(f"کاربر {user.username} (ID: {user.id}) از روم خارج شد. موقعیت: {position}")
 
@@ -1236,6 +1263,9 @@ class AdvancedBot(BaseBot):
                     if username in self.frozen_users:
                         self.frozen_users[username].cancel()
                         self.frozen_users.pop(username, None)
+                    if username in self.jailed_users:
+                        task, _jn = self.jailed_users.pop(username)
+                        task.cancel()
                     logger.info(f"کاربر {username} از لیست‌ها حذف شد (همگام‌سازی).")
             
             for username, user_data in current_users.items():
@@ -1284,6 +1314,16 @@ class AdvancedBot(BaseBot):
                     logger.info(f"کاربر {username} فریز شده به موقعیت اولیه x={original_position.x}, y={original_position.y}, z={original_position.z} بازگردانده شد.")
             except Exception as e:
                 logger.error(f"خطا در بازگرداندن {username} به موقعیت فریز: {e}")
+        if username in self.jailed_users:
+            try:
+                _task, jail_name = self.jailed_users[username]
+                jail_locations = self.config.get("jail_locations", {})
+                if jail_name in jail_locations:
+                    jd = jail_locations[jail_name]
+                    jail_pos = Position(x=jd["x"], y=jd["y"], z=jd["z"])
+                    await self.highrise.teleport(user_id=user.id, dest=jail_pos)
+            except Exception as e:
+                logger.error(f"خطا در نگه داشتن {username} در زندان: {e}")
 
     async def on_chat(self, user: User, message: str):
         username = user.username.lower()
@@ -1306,7 +1346,14 @@ class AdvancedBot(BaseBot):
             elif msg_lower.startswith("!"):
                 parts = msg.split()
                 parts_lower = [p.lower() for p in parts]
-                cmd = parts_lower[0] if len(parts_lower) == 1 else ("!item set" if parts_lower[0] == "!item" else parts_lower[0])
+                if len(parts_lower) == 1:
+                    cmd = parts_lower[0]
+                elif parts_lower[0] == "!item" and len(parts_lower) > 1 and parts_lower[1] == "set":
+                    cmd = "!item set"
+                elif parts_lower[0] == "!create" and len(parts_lower) > 1 and parts_lower[1] == "jail":
+                    cmd = "!create jail"
+                else:
+                    cmd = parts_lower[0]
                 if cmd in self.commands:
                     await self.commands[cmd](user, parts)
                 else:
@@ -1435,12 +1482,15 @@ class AdvancedBot(BaseBot):
     "!listadd - Show admin list\n"
     "!freeze @username - Freeze user\n"
     "!unfreeze @username - Unfreeze user\n"
+    "!jail @username - Jail user (teleport & lock to jail location)\n"
+    "!unjail @username - Release user from jail\n"
+    "!create jail - Save current position as a new jail location\n"
+    "!jail list - Show all jail locations\n"
+    "!removetele jail <num> - Remove jail location (e.g. !removetele jail 1)\n"
     "!party @username <number> - Force an emote on a user\n"
     "!party all <number> - Force an emote on everyone\n"
     "!partys @username - Stop forced emote for user\n\n"
     " For more information, message Shahin!✔️🦇"
-
-)
         )
         for chunk in [help_text[i:i+200] for i in range(0, len(help_text), 200)]:
             await self.highrise.chat(chunk)
@@ -2494,6 +2544,151 @@ class AdvancedBot(BaseBot):
         except Exception as e:
             await self.highrise.chat(f"خطا در آزاد کردن @{target_username}: {str(e)}")
             logger.error(f"خطا در cmd_unfreeze برای {target_username}: {str(e)}")
+
+    # ═══════════════════════════════════════════════════
+    #  🔒  JAIL SYSTEM
+    # ═══════════════════════════════════════════════════
+
+    async def _start_jail_loop(self, target_username: str, target_user, jail_pos: "Position"):
+        """حلقه داخلی که کاربر زندانی را در مکان زندان نگه می‌دارد."""
+        async def jail_loop():
+            try:
+                while target_username in self.jailed_users:
+                    if target_username not in self.active_users:
+                        self.jailed_users.pop(target_username, None)
+                        logger.info(f"کاربر {target_username} آفلاین شد، جیل لغو شد.")
+                        break
+                    await self.highrise.teleport(user_id=target_user.id, dest=jail_pos)
+                    await sleep(1.5)
+            except CancelledError:
+                logger.info(f"وظیفه جیل برای {target_username} لغو شد.")
+            except Exception as e:
+                logger.error(f"خطا در حلقه جیل برای {target_username}: {e}")
+        return create_task(jail_loop())
+
+    async def cmd_jail(self, user: User, parts: list):
+        """!jail @username  یا  !jail list"""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+
+        parts_lower = [p.lower() for p in parts]
+
+        # --- !jail list ---
+        if len(parts_lower) == 2 and parts_lower[1] == "list":
+            jail_locations = self.config.get("jail_locations", {})
+            if not jail_locations:
+                await self.highrise.chat(self.get_message("jail_list_empty"))
+                return
+            lines = ["🔒 Jail list:"]
+            for slot, data in sorted(jail_locations.items()):
+                lines.append(f"  jail {slot} : loc : x={data['x']:.2f}, y={data['y']:.2f}, z={data['z']:.2f}")
+            await self.highrise.chat("\n".join(lines))
+            return
+
+        # --- !jail @username ---
+        if len(parts_lower) != 2 or not parts_lower[1].startswith("@"):
+            await self.highrise.chat("فرمت: !jail @username  یا  !jail list")
+            return
+
+        jail_locations = self.config.get("jail_locations", {})
+        if not jail_locations:
+            await self.highrise.chat(self.get_message("jail_no_location"))
+            return
+
+        target_username = parts_lower[1][1:]
+        target_user = self.active_users.get(target_username)
+        if not target_user:
+            await self.highrise.chat(self.get_message("user_not_found", username=target_username))
+            return
+
+        if target_username in self.jailed_users:
+            await self.highrise.chat(f"کاربر @{target_username} قبلاً در زندان است.")
+            return
+
+        # انتخاب اولین مکان زندان موجود
+        first_slot = sorted(jail_locations.keys())[0]
+        jd = jail_locations[first_slot]
+        jail_pos = Position(x=jd["x"], y=jd["y"], z=jd["z"])
+
+        try:
+            await self.highrise.teleport(user_id=target_user.id, dest=jail_pos)
+            task = await self._start_jail_loop(target_username, target_user, jail_pos)
+            self.jailed_users[target_username] = (task, first_slot)
+            await self.highrise.chat(self.get_message("jail_success", username=target_username, jail_name=f"jail {first_slot}"))
+            logger.info(f"کاربر {target_username} توسط {user.username} به زندان jail {first_slot} منتقل شد.")
+        except Exception as e:
+            await self.highrise.chat(f"خطا در جیل کردن @{target_username}: {str(e)}")
+            logger.error(f"خطا در cmd_jail برای {target_username}: {e}")
+
+    async def cmd_unjail(self, user: User, parts: list):
+        """!unjail @username"""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+
+        parts_lower = [p.lower() for p in parts]
+        if len(parts_lower) != 2 or not parts_lower[1].startswith("@"):
+            await self.highrise.chat("فرمت: !unjail @username")
+            return
+
+        target_username = parts_lower[1][1:]
+        if target_username not in self.jailed_users:
+            await self.highrise.chat(self.get_message("unjail_not_jailed", username=target_username))
+            return
+
+        try:
+            task, _jail_name = self.jailed_users.pop(target_username)
+            task.cancel()
+            await self.highrise.chat(self.get_message("unjail_success", username=target_username))
+            logger.info(f"کاربر {target_username} توسط {user.username} از زندان آزاد شد.")
+        except Exception as e:
+            await self.highrise.chat(f"خطا در آزاد کردن @{target_username}: {str(e)}")
+            logger.error(f"خطا در cmd_unjail برای {target_username}: {e}")
+
+    async def cmd_create_jail(self, user: User, parts: list):
+        """!create jail  —  موقعیت فعلی admin/host را به عنوان مکان جدید زندان ذخیره می‌کند."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+
+        pos = self.user_positions.get(user.username.lower())
+        if not pos:
+            await self.highrise.chat("موقعیت شما مشخص نیست!")
+            return
+
+        jail_locations = self.config.setdefault("jail_locations", {})
+        # شماره بعدی را پیدا کن
+        existing = [int(k) for k in jail_locations.keys() if str(k).isdigit()]
+        next_slot = str(max(existing) + 1) if existing else "1"
+
+        jail_locations[next_slot] = {"x": pos.x, "y": pos.y, "z": pos.z}
+        self.save_config()
+        await self.highrise.chat(self.get_message("create_jail_success", slot=next_slot))
+        logger.info(f"مکان زندان jail {next_slot} توسط {user.username} در ({pos.x},{pos.y},{pos.z}) ذخیره شد.")
+
+    async def cmd_removetele(self, user: User, parts: list):
+        """!removetele jail <number>  —  مکان زندان مشخص شده را حذف می‌کند."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+
+        parts_lower = [p.lower() for p in parts]
+        # فرمت: !removetele jail 1
+        if len(parts_lower) != 3 or parts_lower[1] != "jail" or not parts_lower[2].isdigit():
+            await self.highrise.chat("فرمت: !removetele jail <شماره>   مثال: !removetele jail 1")
+            return
+
+        slot = parts_lower[2]
+        jail_locations = self.config.get("jail_locations", {})
+        if slot not in jail_locations:
+            await self.highrise.chat(self.get_message("removetele_jail_not_found", slot=slot))
+            return
+
+        del jail_locations[slot]
+        self.save_config()
+        await self.highrise.chat(self.get_message("removetele_jail_success", slot=slot))
+        logger.info(f"مکان زندان jail {slot} توسط {user.username} حذف شد.")
 
     async def cmd_party(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
