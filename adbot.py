@@ -1465,7 +1465,7 @@ class AdvancedBot(BaseBot):
             "🔹 میزبانی ۲۴ ساعته و آنلاین بدون قطعی روی سرورهای قدرتمند ⚡\n\n"
             "🤝 **شرایط رنت (اجاره):**\n"
             "برای اجاره یا همان رنت این ربات فوق‌العاده برای روم خود، لطفاً همین الان به آیدی زیر پیام بدید:\n"
-            "👉 @29_48👈"
+            "👉 shahin 👈"
         )
         
         try:
@@ -1573,7 +1573,7 @@ class AdvancedBot(BaseBot):
     "❖ !kick / !mute @username [minutes] / !unmute\n"
     "❖ !ban @username [minutes] - Ban (optional duration)\n"
     "━━━━━━━━━━━━━━━━━━━━━━━\n"
-    "          💎 PM FOR RENT: @29_48 💎"
+    "          💎 PM FOR REN shahin 💎"
         )
         for chunk in [help_text[i:i+200] for i in range(0, len(help_text), 200)]:
             await self.highrise.chat(chunk)
