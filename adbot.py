@@ -26,12 +26,15 @@ DEFAULT_CONFIG = {
     "host_usernames": ["shahinv"],
     "admin_usernames": [""],
     "vip_usernames": [],
+    "coowner_usernames": [],
+    "senioradmin_usernames": [],
     "banned_users": [],
     "teleport_locations": {
         "vip": {"x": 14.5, "y": 16.75, "z": 5.5},
         "vip1": {"x": 14.5, "y": 16.75, "z": 5.5},
         "dj": {"x": 9.5, "y": 10.75, "z": 10.5}
     },
+    "teleport_roles": {},
     "jail_locations": {},
     "language": "fa",
     "welcome_message": "✨ 🌟 𝐖𝐞𝐥𝐜𝐨𝐦𝐞 {username} ❤️ 𝐆𝐥𝐚𝐝 𝐭𝐨 𝐡𝐚𝐯𝐞 𝐲𝐨𝐮 𝐡𝐞𝐫𝐞!\n🕺 🚀",
@@ -55,24 +58,14 @@ class AdvancedBot(BaseBot):
         self.frozen_users = {}
         self.jailed_users = {}
         self.party_dances = {}
+        self.flash_users = set()
+        self.follow_task = None
+        self.follow_target = None
+        self.bot_home_position = None
         self.commands = {
             "!help": self.cmd_help,
             "!spam": self.cmd_spam,
             "!tele": self.cmd_tele,
-            "!goto": self.cmd_goto,
-            "!bring": self.cmd_bring,
-            "!switch": self.cmd_switch,
-            "!follow": self.cmd_follow,
-            "!stop": self.cmd_stop_follow,
-            "!createtele": self.cmd_create_tele,
-            "!removetele": self.cmd_remove_tele,
-            "!telelist": self.cmd_tele_list,
-            "!teleall": self.cmd_tele_all,
-            "!flash": self.cmd_flash,
-            "!stopflash": self.cmd_stop_flash,
-            "!goback": self.cmd_goback,
-            "!come": self.cmd_come,
-            "!void": self.cmd_void,
             "!heart": self.cmd_heart,
             "!clap": self.cmd_clap,
             "!wink": self.cmd_wink,
@@ -86,9 +79,6 @@ class AdvancedBot(BaseBot):
             "!dj": self.cmd_dj,
             "!down": self.cmd_down,
             "!ban": self.cmd_ban,
-            "!mute": self.cmd_mute,
-            "!unmute": self.cmd_unmute,
-            "!kick": self.cmd_kick,
             "!unban": self.cmd_unban,
             "!dancechain": self.cmd_dancechain,
             "!addtele": self.cmd_addtele,
@@ -109,12 +99,25 @@ class AdvancedBot(BaseBot):
             "!party": self.cmd_party,
             "!partys": self.cmd_partys,
             "!emotebot": self.cmd_emotebot,
-            "!loopchat": self.cmd_loopchat
+            "!loopchat": self.cmd_loopchat,
+            "!goto": self.cmd_goto,
+            "!bring": self.cmd_bring,
+            "!switch": self.cmd_switch,
+            "!follow": self.cmd_follow,
+            "!stop follow": self.cmd_stop_follow,
+            "!create tele": self.cmd_create_tele,
+            "!remove tele": self.cmd_remove_tele,
+            "!tele list": self.cmd_tele_list,
+            "!tele all": self.cmd_tele_all,
+            "!flash": self.cmd_flash,
+            "!stop flash": self.cmd_stop_flash,
+            "!goback": self.cmd_goback,
+            "!come": self.cmd_set,
+            "!void": self.cmd_void,
+            "!kick": self.cmd_kick,
+            "!mute": self.cmd_mute,
+            "!unmute": self.cmd_unmute
         }
-        self.follow_target = None
-        self.follow_task = None
-        self.flash_mode = False
-        self.saved_position = None
         self.emotes = {
             "1": "idle_zombie",
             "2": "idle_layingdown2",
@@ -1073,6 +1076,29 @@ class AdvancedBot(BaseBot):
         """بررسی می‌کند که آیا کاربر رتبه Host (بالاترین سطح دسترسی، بالاتر از ادمین و VIP) دارد یا نه."""
         return username.lower() in [h.lower() for h in self.config.get("host_usernames", [])]
 
+    def get_role(self, username: str) -> str:
+        """رتبه دسترسی کاربر را بر اساس لیست‌های تنظیم‌شده برمی‌گرداند."""
+        uname = username.lower()
+        if uname in [h.lower() for h in self.config.get("host_usernames", [])]:
+            return "owner"
+        if uname in [c.lower() for c in self.config.get("coowner_usernames", [])]:
+            return "coowner"
+        if uname in [s.lower() for s in self.config.get("senioradmin_usernames", [])]:
+            return "senioradmin"
+        if uname in [a.lower() for a in self.config.get("admin_usernames", [])]:
+            return "mod"
+        if uname in [v.lower() for v in self.config.get("vip_usernames", [])]:
+            return "vip"
+        return "public"
+
+    def has_role(self, username: str, required_role: str) -> bool:
+        """بررسی می‌کند رتبه کاربر حداقل به اندازه رتبه لازم هست یا نه."""
+        order = ["public", "vip", "mod", "senioradmin", "coowner", "owner"]
+        try:
+            return order.index(self.get_role(username)) >= order.index(required_role)
+        except ValueError:
+            return False
+
     def load_config(self):
         try:
             if os.path.exists(CONFIG_FILE):
@@ -1196,7 +1222,17 @@ class AdvancedBot(BaseBot):
                 except CancelledError:
                     pass
             self.jailed_users.clear()
-            
+
+            if self.follow_task and not self.follow_task.done():
+                self.follow_task.cancel()
+                try:
+                    await self.follow_task
+                except CancelledError:
+                    pass
+            self.follow_task = None
+            self.follow_target = None
+            self.flash_users.clear()
+
             if self.announcement_task and not self.announcement_task.done():
                 self.announcement_task.cancel()
                 try:
@@ -1211,9 +1247,6 @@ class AdvancedBot(BaseBot):
                 except CancelledError:
                     pass
                 self.score_update_task = None
-            if self.follow_task and not self.follow_task.done():
-                self.follow_task.cancel()
-                self.follow_task = None
             logger.info("همه وظایف ناهمزمان لغو شدند.")
         except Exception as e:
             logger.error(f"خطا در لغو وظایف: {e}")
@@ -1229,6 +1262,7 @@ class AdvancedBot(BaseBot):
         try:
             dest = Position(x=16.5, y=0.25, z=3.5)
             await self.highrise.teleport(user_id=self.user_id, dest=dest)
+            self.bot_home_position = dest
             await self.highrise.chat("ربات به موقعیت اولیه (x=0.5, y=1.0, z=1.5) منتقل شد!")
             logger.info("ربات به موقعیت اولیه تلپورت شد.")
         except Exception as e:
@@ -1269,6 +1303,11 @@ class AdvancedBot(BaseBot):
         if username in self.jailed_users:
             task, _jail_name = self.jailed_users.pop(username)
             task.cancel()
+        self.flash_users.discard(username)
+        if self.follow_target == username:
+            self.follow_target = None
+            if self.follow_task and not self.follow_task.done():
+                self.follow_task.cancel()
         await self.highrise.chat(f"@{user.username} از روم خارج شد.")
         logger.info(f"کاربر {user.username} (ID: {user.id}) از روم خارج شد. موقعیت: {position}")
 
@@ -1327,15 +1366,6 @@ class AdvancedBot(BaseBot):
 
     async def on_user_move(self, user: User, position: Position):
         username = user.username.lower()
-        if user.id == self.user_id:
-            self.saved_position = position
-        elif self.flash_mode:
-            try:
-                await self.highrise.teleport(user_id=self.user_id, dest=position)
-            except Exception as e:
-                logger.error(f"خطا در حالت فلش: {e}")
-        if username == self.follow_target:
-            self.user_positions[username] = position
         self.user_positions[username] = position
         if username in self.config["admin_usernames"]:
             logger.info(f"ادمین {user.username} به موقعیت x={position.x}, y={position.y}, z={position.z} حرکت کرد.")
@@ -1357,6 +1387,11 @@ class AdvancedBot(BaseBot):
                     await self.highrise.teleport(user_id=user.id, dest=jail_pos)
             except Exception as e:
                 logger.error(f"خطا در نگه داشتن {username} در زندان: {e}")
+        if username in self.flash_users:
+            try:
+                await self.highrise.teleport(user_id=user.id, dest=position)
+            except Exception as e:
+                logger.error(f"خطا در حالت فلش برای {username}: {e}")
 
     async def on_chat(self, user: User, message: str):
         username = user.username.lower()
@@ -1370,23 +1405,17 @@ class AdvancedBot(BaseBot):
         try:
             self.user_scores[username] = self.user_scores.get(username, 0) + 2
 
+            parts_check = msg.split()
             if msg_lower in self.emotes:
                 await self.start_dance(user, self.emotes[msg_lower])
             elif msg_lower in ["stop", "استوپ"]:
                 await self.stop_dance(user)
             elif msg_lower in ["سازنده", "creature", "creator", "سازندت", "سازنده بات"]:
                 await self.highrise.chat("")
-            elif self.flash_mode:
-                target = self.active_users.get(msg_lower.lstrip("@"))
-                if target:
-                    await self.highrise.teleport(user_id=target.id, dest=self.user_positions.get(username, Position(x=0, y=0, z=0)))
-            elif not msg_lower.startswith("!") and len(msg.split()) == 2:
-                location, target_name = msg_lower.split()
-                target = self.active_users.get(target_name.lstrip("@"))
-                if location in self.config.get("teleport_locations", {}) and target:
-                    data = self.config["teleport_locations"][location]
-                    await self.highrise.teleport(user_id=target.id, dest=Position(x=data["x"], y=data["y"], z=data["z"]))
-                    await self.highrise.chat(f"@{target.username} به {location} تلپورت شد.")
+            elif (len(parts_check) == 2 and parts_check[1].startswith("@")
+                  and parts_check[0].lower() in self.config["teleport_locations"]):
+                # [نام مکان] [@username] بدون علامت ! → تلپورت مستقیم کاربر به مکان
+                await self.cmd_location_teleport(user, parts_check)
             elif msg_lower.startswith("!"):
                 parts = msg.split()
                 parts_lower = [p.lower() for p in parts]
@@ -1397,17 +1426,17 @@ class AdvancedBot(BaseBot):
                 elif parts_lower[0] == "!create" and len(parts_lower) > 1 and parts_lower[1] == "jail":
                     cmd = "!create jail"
                 elif parts_lower[0] == "!create" and len(parts_lower) > 1 and parts_lower[1] == "tele":
-                    cmd = "!createtele"
-                elif parts_lower[0] == "!remove" and len(parts_lower) > 2 and parts_lower[1] == "tele":
-                    cmd = "!removetele"
-                elif parts_lower[0] == "!tele" and len(parts_lower) > 1 and parts_lower[1] == "list":
-                    cmd = "!telelist"
-                elif parts_lower[0] == "!tele" and len(parts_lower) > 2 and parts_lower[1] == "all":
-                    cmd = "!teleall"
+                    cmd = "!create tele"
+                elif parts_lower[0] == "!remove" and len(parts_lower) > 1 and parts_lower[1] == "tele":
+                    cmd = "!remove tele"
                 elif parts_lower[0] == "!stop" and len(parts_lower) > 1 and parts_lower[1] == "follow":
-                    cmd = "!stop"
+                    cmd = "!stop follow"
                 elif parts_lower[0] == "!stop" and len(parts_lower) > 1 and parts_lower[1] == "flash":
-                    cmd = "!stopflash"
+                    cmd = "!stop flash"
+                elif parts_lower[0] == "!tele" and len(parts_lower) > 1 and parts_lower[1] == "list":
+                    cmd = "!tele list"
+                elif parts_lower[0] == "!tele" and len(parts_lower) > 1 and parts_lower[1] == "all":
+                    cmd = "!tele all"
                 else:
                     cmd = parts_lower[0]
                 if cmd in self.commands:
@@ -1503,12 +1532,7 @@ class AdvancedBot(BaseBot):
     "❖ stop - Stop current emote\n"
     "❖ !help - Show this help menu\n"
     "❖ !spam <message> - Send spam messages\n"
-     "❖ !tele @username <location> - Teleport user to a location\n"
-     "❖ !goto @username / !bring @username / !bring all\n"
-     "❖ !switch @username / !follow @username / !stop follow\n"
-     "❖ !create tele <name> <role> / !remove tele <name>\n"
-     "❖ !tele list / !tele all <location> / !flash / !stop flash\n"
-     "❖ !goback / !come / !void [@username]\n"
+    "❖ !tele @username <location> - Teleport user to a location\n"
     "❖ !tele to @username - Teleport to a user\n"
     "❖ !tele me @username - Teleport user to you\n"
     "❖ !tele me all - Teleport everyone to you\n"
@@ -1520,8 +1544,7 @@ class AdvancedBot(BaseBot):
     "❖ !tip @username <gold> - Tip a user\n"
     "❖ !tip all <gold> - Tip everyone\n"
     "❖ !botfit @username - Copy user's outfit\n"
-     "❖ !ban @username [minutes] / !mute @username [minutes] / !unmute @username\n"
-     "❖ !kick @username - Kick a user\n"
+    "❖ !ban @username - Ban a user\n"
     "❖ !unban @username - Unban a user\n"
     "❖ !addtele / !deltele - Manage teleport locations\n"
     "❖ !welcome <message> - Set welcome message\n"
@@ -1538,9 +1561,20 @@ class AdvancedBot(BaseBot):
     "❖ !party @username <emote> - Force user emote\n"
     "❖ !party all <emote> - Force everyone emote\n"
     "❖ !partys @username - Stop forced emote\n"
+    "❖ !goto / !bring / !bring all / !switch @username\n"
+    "❖ !follow @username / !stop follow\n"
+    "❖ !create tele <name> [role] - New tele w/ access role\n"
+    "❖ <location> @username - Quick teleport (no !)\n"
+    "❖ !remove tele <name> / !remove tele all\n"
+    "❖ !tele list / !tele all <location>\n"
+    "❖ !flash / !stop flash - Instant-move mode\n"
+    "❖ !goback - Bot returns home / !come - Bot to you\n"
+    "❖ !void @username - Send user far away\n"
+    "❖ !kick / !mute @username [minutes] / !unmute\n"
+    "❖ !ban @username [minutes] - Ban (optional duration)\n"
     "━━━━━━━━━━━━━━━━━━━━━━━\n"
     "          💎 PM FOR RENT: @29_48 💎"
- )
+        )
         for chunk in [help_text[i:i+200] for i in range(0, len(help_text), 200)]:
             await self.highrise.chat(chunk)
         logger.info(f"راهنما توسط {user.username} درخواست شد.")
@@ -2288,31 +2322,60 @@ class AdvancedBot(BaseBot):
             logger.error(f"خطا در cmd_down: {e}")
 
     async def cmd_ban(self, user: User, parts: list):
+        """!ban @username [مدت به دقیقه] — کاربر را بن می‌کند. بدون مدت یعنی بن دائم."""
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
             return
         parts = [p.lower() for p in parts]
-        if len(parts) != 2 or not parts[1].startswith("@"):
-            await self.highrise.chat(self.get_message("invalid_format", format="!ban @username"))
+        if len(parts) not in (2, 3) or not parts[1].startswith("@"):
+            await self.highrise.chat(self.get_message("invalid_format", format="!ban @username [مدت به دقیقه]"))
             return
+
+        duration_minutes = None
+        if len(parts) == 3:
+            if not parts[2].isdigit():
+                await self.highrise.chat(self.get_message("invalid_format", format="!ban @username [مدت به دقیقه]"))
+                return
+            duration_minutes = int(parts[2])
+
         target_username = parts[1][1:].lower()
         target_user = self.active_users.get(target_username)
         if not target_user:
             await self.highrise.chat(self.get_message("user_not_found", username=target_username))
             return
-        duration = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
+
         if target_username not in self.config["banned_users"]:
             self.config["banned_users"].append(target_username)
         self.save_config()
+
         try:
-            if duration is None:
-                await self.highrise.moderate_room(target_user.id, "ban")
+            if duration_minutes:
+                await self.highrise.moderate_room(target_user.id, "ban", duration_minutes * 60)
             else:
-                await self.highrise.moderate_room(target_user.id, "ban", duration)
+                await self.highrise.moderate_room(target_user.id, "ban")
         except Exception as e:
-            logger.error(f"خطا در اجرای ban برای {target_username}: {e}")
-        await self.highrise.chat(self.get_message("ban_success", username=target_username))
-        logger.info(f"کاربر {target_username} توسط {user.username} بن شد.")
+            logger.error(f"خطا در فراخوانی moderate_room برای بن {target_username}: {e}")
+
+        if duration_minutes:
+            await self.highrise.chat(f"⛔ @{target_username} به مدت {duration_minutes} دقیقه بن شد!")
+
+            async def auto_unban():
+                try:
+                    await sleep(duration_minutes * 60)
+                    if target_username in self.config["banned_users"]:
+                        self.config["banned_users"].remove(target_username)
+                        self.save_config()
+                        await self.highrise.chat(f"✅ بن موقت @{target_username} به پایان رسید.")
+                        logger.info(f"بن موقت {target_username} به‌صورت خودکار پایان یافت.")
+                except CancelledError:
+                    pass
+                except Exception as e:
+                    logger.error(f"خطا در آنبن خودکار {target_username}: {e}")
+
+            create_task(auto_unban())
+        else:
+            await self.highrise.chat(self.get_message("ban_success", username=target_username))
+        logger.info(f"کاربر {target_username} توسط {user.username} بن شد (مدت: {duration_minutes or 'دائم'}).")
 
     async def cmd_unban(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
@@ -2340,196 +2403,6 @@ class AdvancedBot(BaseBot):
         except Exception as e:
             await self.highrise.chat(f"خطا در آنبن کردن کاربر @{target_username}: {str(e)}")
             logger.error(f"خطا در cmd_unban برای {target_username}: {str(e)}")
-
-    def _target_user(self, parts, index=1):
-        if len(parts) <= index:
-            return None
-        return self.active_users.get(parts[index].lstrip("@").lower())
-
-    async def cmd_goto(self, user: User, parts: list):
-        target = self._target_user(parts)
-        if not target:
-            await self.highrise.chat(self.get_message("user_not_found", username=""))
-            return
-        pos = self.user_positions.get(target.username.lower())
-        if pos:
-            await self.highrise.teleport(user_id=user.id, dest=pos)
-            await self.highrise.chat(f"@{user.username} به موقعیت @{target.username} رفت.")
-
-    async def cmd_bring(self, user: User, parts: list):
-        if user.username.lower() not in self.config["admin_usernames"]:
-            await self.highrise.chat(self.get_message("no_permission"))
-            return
-        pos = self.user_positions.get(user.username.lower())
-        if not pos:
-            return
-        targets = [u for name, u in self.active_users.items()
-                   if u.id != user.id and (len(parts) > 1 and parts[1].lower() == "all" or
-                                           name == (parts[1].lstrip("@").lower() if len(parts) > 1 else ""))]
-        if not targets:
-            await self.highrise.chat(self.get_message("invalid_format", format="!bring @username یا !bring all"))
-            return
-        for target in targets:
-            await self.highrise.teleport(user_id=target.id, dest=pos)
-        await self.highrise.chat(f"{len(targets)} کاربر به موقعیت @{user.username} آورده شدند.")
-
-    async def cmd_switch(self, user: User, parts: list):
-        if user.username.lower() not in self.config["admin_usernames"]:
-            await self.highrise.chat(self.get_message("no_permission"))
-            return
-        target = self._target_user(parts)
-        own_pos = self.user_positions.get(user.username.lower())
-        target_pos = self.user_positions.get(target.username.lower()) if target else None
-        if not target or not own_pos or not target_pos:
-            await self.highrise.chat(self.get_message("invalid_format", format="!switch @username"))
-            return
-        await self.highrise.teleport(user_id=user.id, dest=target_pos)
-        await self.highrise.teleport(user_id=target.id, dest=own_pos)
-        await self.highrise.chat(f"موقعیت @{user.username} و @{target.username} جابه‌جا شد.")
-
-    async def cmd_follow(self, user: User, parts: list):
-        if user.username.lower() not in self.config["admin_usernames"]:
-            await self.highrise.chat(self.get_message("no_permission"))
-            return
-        target = self._target_user(parts)
-        if not target:
-            await self.highrise.chat(self.get_message("invalid_format", format="!follow @username"))
-            return
-        if self.follow_task and not self.follow_task.done():
-            self.follow_task.cancel()
-        self.follow_target = target.username.lower()
-        async def follow_loop():
-            try:
-                while self.follow_target == target.username.lower():
-                    pos = self.user_positions.get(target.username.lower())
-                    if pos:
-                        await self.highrise.teleport(user_id=self.user_id, dest=pos)
-                    await sleep(1.0)
-            except CancelledError:
-                pass
-        self.follow_task = create_task(follow_loop())
-        await self.highrise.chat(f"ربات شروع به دنبال کردن @{target.username} کرد.")
-
-    async def cmd_stop_follow(self, user: User, parts: list):
-        if self.follow_task and not self.follow_task.done():
-            self.follow_task.cancel()
-        self.follow_target = None
-        self.follow_task = None
-        await self.highrise.chat("دنبال کردن متوقف شد.")
-
-    async def cmd_create_tele(self, user: User, parts: list):
-        if user.username.lower() not in self.config["admin_usernames"]:
-            await self.highrise.chat(self.get_message("no_permission"))
-            return
-        if len(parts) < 3:
-            await self.highrise.chat("فرمت: !create tele نام_مکان نقش (public, mod, vip, senioradmin, coowner, owner)")
-            return
-        name, role = parts[2].lower(), parts[3].lower() if len(parts) > 3 else "public"
-        allowed = {"public", "mod", "vip", "senioradmin", "coowner", "owner"}
-        if role not in allowed:
-            await self.highrise.chat(f"نقش نامعتبر است. گزینه‌ها: {', '.join(sorted(allowed))}")
-            return
-        pos = self.user_positions.get(user.username.lower())
-        if not pos:
-            return
-        self.config["teleport_locations"][name] = {"x": pos.x, "y": pos.y, "z": pos.z, "role": role}
-        self.save_config()
-        await self.highrise.chat(f"مکان {name} با دسترسی {role} ذخیره شد.")
-
-    async def cmd_remove_tele(self, user: User, parts: list):
-        if user.username.lower() not in self.config["admin_usernames"]:
-            await self.highrise.chat(self.get_message("no_permission"))
-            return
-        name = parts[2].lower() if len(parts) > 2 else ""
-        locations = self.config["teleport_locations"]
-        if name == "all":
-            for key in list(locations):
-                if key not in {"vip", "vip1", "dj"}:
-                    del locations[key]
-            self.save_config()
-            await self.highrise.chat("همه مکان‌های سفارشی حذف شدند.")
-        elif name in locations and name not in {"vip", "vip1", "dj"}:
-            del locations[name]
-            self.save_config()
-            await self.highrise.chat(f"مکان {name} حذف شد.")
-        else:
-            await self.highrise.chat(f"مکان {name} وجود ندارد یا محافظت شده است.")
-
-    async def cmd_tele_list(self, user: User, parts: list):
-        locations = self.config.get("teleport_locations", {})
-        await self.highrise.chat("📍 مکان‌ها: " + ", ".join(locations.keys()))
-
-    async def cmd_tele_all(self, user: User, parts: list):
-        if user.username.lower() not in self.config["admin_usernames"] or len(parts) < 3:
-            await self.highrise.chat(self.get_message("invalid_format", format="!tele all نام_مکان"))
-            return
-        data = self.config["teleport_locations"].get(parts[2].lower())
-        if not data:
-            await self.highrise.chat("مکان وجود ندارد!")
-            return
-        dest = Position(x=data["x"], y=data["y"], z=data["z"])
-        count = 0
-        for target in self.active_users.values():
-            if target.id != self.user_id:
-                await self.highrise.teleport(user_id=target.id, dest=dest)
-                count += 1
-        await self.highrise.chat(f"{count} کاربر به {parts[2]} تلپورت شدند.")
-
-    async def cmd_flash(self, user: User, parts: list):
-        if user.username.lower() not in self.config["admin_usernames"]:
-            await self.highrise.chat(self.get_message("no_permission"))
-            return
-        self.flash_mode = True
-        await self.highrise.chat("⚡ فلش فعال شد. با حرکت شما، ربات به همان موقعیت تلپورت می‌شود.")
-
-    async def cmd_stop_flash(self, user: User, parts: list):
-        self.flash_mode = False
-        await self.highrise.chat("فلش متوقف شد.")
-
-    async def cmd_goback(self, user: User, parts: list):
-        if not self.saved_position:
-            await self.highrise.chat("موقعیت ذخیره‌شده‌ای وجود ندارد.")
-            return
-        await self.highrise.teleport(user_id=self.user_id, dest=self.saved_position)
-        await self.highrise.chat("ربات به موقعیت قبلی برگشت.")
-
-    async def cmd_come(self, user: User, parts: list):
-        pos = self.user_positions.get(user.username.lower())
-        if pos:
-            await self.highrise.teleport(user_id=self.user_id, dest=pos)
-            await self.highrise.chat(f"ربات به سمت @{user.username} آمد.")
-
-    async def cmd_void(self, user: User, parts: list):
-        target = self._target_user(parts) or user
-        await self.highrise.teleport(user_id=target.id, dest=Position(x=9999, y=9999, z=9999))
-        await self.highrise.chat(f"@{target.username} به Void فرستاده شد.")
-
-    async def cmd_mute(self, user: User, parts: list):
-        await self._moderate_target(user, parts, "mute")
-
-    async def cmd_unmute(self, user: User, parts: list):
-        await self._moderate_target(user, parts, "unmute")
-
-    async def cmd_kick(self, user: User, parts: list):
-        await self._moderate_target(user, parts, "kick")
-
-    async def _moderate_target(self, user: User, parts: list, action: str):
-        if user.username.lower() not in self.config["admin_usernames"]:
-            await self.highrise.chat(self.get_message("no_permission"))
-            return
-        target = self._target_user(parts)
-        if not target:
-            await self.highrise.chat(self.get_message("invalid_format", format=f"!{action} @username [duration]"))
-            return
-        duration = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
-        try:
-            if duration is None:
-                await self.highrise.moderate_room(target.id, action)
-            else:
-                await self.highrise.moderate_room(target.id, action, duration)
-            await self.highrise.chat(f"@{target.username} با دستور {action} مدیریت شد.")
-        except Exception as e:
-            await self.highrise.chat(f"خطا در اجرای {action}: {e}")
 
     async def cmd_dancechain(self, user: User, parts: list):
         dance_list = ["dance-tiktok8", "dance-blackpink", "dance-tiktok2"]
@@ -3122,6 +2995,453 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در توقف رقص برای @{target_username}: {str(e)}")
             logger.error(f"خطا در cmd_partys برای {target_username}: {str(e)}")
 
+    # ═══════════════════════════════════════════════════
+    #  🚶  MOVEMENT & TELEPORTATION COMMANDS
+    # ═══════════════════════════════════════════════════
+
+    async def cmd_goto(self, user: User, parts: list):
+        """!goto @username — شما به موقعیت کاربر هدف تلپورت می‌شوید."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        parts_lower = [p.lower() for p in parts]
+        if len(parts_lower) != 2 or not parts_lower[1].startswith("@"):
+            await self.highrise.chat(self.get_message("invalid_format", format="!goto @username"))
+            return
+        target_username = parts_lower[1][1:]
+        target_user = self.active_users.get(target_username)
+        if not target_user:
+            await self.highrise.chat(self.get_message("user_not_found", username=target_username))
+            return
+        position = self.user_positions.get(target_username)
+        if not position:
+            await self.highrise.chat("موقعیت کاربر در دسترس نیست.")
+            return
+        try:
+            await self.highrise.teleport(user_id=user.id, dest=position)
+            await self.highrise.chat(f"@{user.username} به مکان @{target_user.username} تلپورت شد.")
+            logger.info(f"کاربر {user.username} با !goto به موقعیت {target_username} تلپورت شد.")
+        except Exception as e:
+            await self.highrise.chat(self.get_message("teleport_error", error=str(e)))
+            logger.error(f"خطا در cmd_goto برای {user.username}: {e}")
+
+    async def cmd_bring(self, user: User, parts: list):
+        """!bring @username — کاربر هدف را به موقعیت شما می‌آورد.   !bring all — همه را می‌آورد."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        parts_lower = [p.lower() for p in parts]
+        if len(parts_lower) != 2:
+            await self.highrise.chat(self.get_message("invalid_format", format="!bring @username یا !bring all"))
+            return
+
+        admin_position = self.user_positions.get(user.username.lower())
+        if not admin_position:
+            await self.highrise.chat("موقعیت شما در دسترس نیست.")
+            return
+
+        if parts_lower[1] == "all":
+            try:
+                successful = 0
+                for username, target_user in list(self.active_users.items()):
+                    if target_user.id == user.id or target_user.id == self.user_id:
+                        continue
+                    try:
+                        await self.highrise.teleport(user_id=target_user.id, dest=admin_position)
+                        successful += 1
+                        await sleep(0.5)
+                    except Exception as e:
+                        logger.error(f"خطا در بردن {username} به موقعیت {user.username}: {e}")
+                await self.highrise.chat(f"{successful} کاربر به مکان @{user.username} آورده شدند.")
+                logger.info(f"{successful} کاربر با !bring all توسط {user.username} آورده شدند.")
+            except Exception as e:
+                await self.highrise.chat(self.get_message("teleport_error", error=str(e)))
+                logger.error(f"خطا در cmd_bring all برای {user.username}: {e}")
+            return
+
+        if not parts_lower[1].startswith("@"):
+            await self.highrise.chat(self.get_message("invalid_format", format="!bring @username یا !bring all"))
+            return
+
+        target_username = parts_lower[1][1:]
+        target_user = self.active_users.get(target_username)
+        if not target_user:
+            await self.highrise.chat(self.get_message("user_not_found", username=target_username))
+            return
+        try:
+            await self.highrise.teleport(user_id=target_user.id, dest=admin_position)
+            await self.highrise.chat(f"@{target_user.username} به مکان @{user.username} آورده شد.")
+            logger.info(f"کاربر {target_username} با !bring توسط {user.username} آورده شد.")
+        except Exception as e:
+            await self.highrise.chat(self.get_message("teleport_error", error=str(e)))
+            logger.error(f"خطا در cmd_bring برای {target_username}: {e}")
+
+    async def cmd_switch(self, user: User, parts: list):
+        """!switch @username — موقعیت شما با کاربر هدف جابه‌جا می‌شود."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        parts_lower = [p.lower() for p in parts]
+        if len(parts_lower) != 2 or not parts_lower[1].startswith("@"):
+            await self.highrise.chat(self.get_message("invalid_format", format="!switch @username"))
+            return
+        target_username = parts_lower[1][1:]
+        target_user = self.active_users.get(target_username)
+        if not target_user:
+            await self.highrise.chat(self.get_message("user_not_found", username=target_username))
+            return
+        admin_position = self.user_positions.get(user.username.lower())
+        target_position = self.user_positions.get(target_username)
+        if not admin_position or not target_position:
+            await self.highrise.chat("موقعیت یکی از کاربران در دسترس نیست.")
+            return
+        try:
+            await self.highrise.teleport(user_id=user.id, dest=target_position)
+            await self.highrise.teleport(user_id=target_user.id, dest=admin_position)
+            await self.highrise.chat(f"@{user.username} و @{target_user.username} جای خود را عوض کردند.")
+            logger.info(f"موقعیت {user.username} و {target_username} با !switch جابه‌جا شد.")
+        except Exception as e:
+            await self.highrise.chat(self.get_message("teleport_error", error=str(e)))
+            logger.error(f"خطا در cmd_switch برای {user.username}/{target_username}: {e}")
+
+    async def cmd_follow(self, user: User, parts: list):
+        """!follow @username — ربات کاربر هدف را دنبال می‌کند."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        parts_lower = [p.lower() for p in parts]
+        if len(parts_lower) != 2 or not parts_lower[1].startswith("@"):
+            await self.highrise.chat(self.get_message("invalid_format", format="!follow @username"))
+            return
+        target_username = parts_lower[1][1:]
+        target_user = self.active_users.get(target_username)
+        if not target_user:
+            await self.highrise.chat(self.get_message("user_not_found", username=target_username))
+            return
+
+        if self.follow_task and not self.follow_task.done():
+            self.follow_task.cancel()
+
+        self.follow_target = target_username
+
+        async def follow_loop():
+            try:
+                while self.follow_target == target_username:
+                    if target_username not in self.active_users:
+                        self.follow_target = None
+                        logger.info(f"کاربر {target_username} آفلاین شد، فالو متوقف شد.")
+                        break
+                    position = self.user_positions.get(target_username)
+                    if position:
+                        await self.highrise.teleport(user_id=self.user_id, dest=position)
+                    await sleep(1.0)
+            except CancelledError:
+                logger.info(f"وظیفه فالو برای {target_username} لغو شد.")
+            except Exception as e:
+                logger.error(f"خطا در حلقه فالو برای {target_username}: {e}")
+
+        self.follow_task = create_task(follow_loop())
+        await self.highrise.chat(f"🤖 ربات در حال دنبال کردن @{target_user.username} است.")
+        logger.info(f"ربات با !follow توسط {user.username} شروع به دنبال کردن {target_username} کرد.")
+
+    async def cmd_stop_follow(self, user: User, parts: list):
+        """!stop follow — توقف دنبال کردن ربات."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        if not self.follow_target and not (self.follow_task and not self.follow_task.done()):
+            await self.highrise.chat("ربات در حال دنبال کردن کسی نیست.")
+            return
+        self.follow_target = None
+        if self.follow_task and not self.follow_task.done():
+            self.follow_task.cancel()
+        await self.highrise.chat("🤖 ربات دیگر کسی را دنبال نمی‌کند.")
+        logger.info(f"دنبال کردن ربات توسط {user.username} متوقف شد.")
+
+    async def cmd_create_tele(self, user: User, parts: list):
+        """!create tele نام_مکان [رتبه] — مکان تلپورت جدید با سطح دسترسی مشخص می‌سازد."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        parts_lower = [p.lower() for p in parts]
+        if len(parts_lower) < 3:
+            await self.highrise.chat(self.get_message("invalid_format", format="!create tele نام_مکان [رتبه]"))
+            return
+
+        location_name = parts_lower[2]
+        allowed_roles = ("public", "mod", "vip", "senioradmin", "coowner", "owner")
+        role = parts_lower[3] if len(parts_lower) > 3 else "mod"
+        if role not in allowed_roles:
+            await self.highrise.chat(f"رتبه نامعتبر است. رتبه‌های مجاز: {', '.join(allowed_roles)}")
+            return
+
+        pos = self.user_positions.get(user.username.lower())
+        if not pos:
+            await self.highrise.chat("موقعیت شما مشخص نیست!")
+            return
+
+        self.config["teleport_locations"][location_name] = {"x": pos.x, "y": pos.y, "z": pos.z}
+        self.config.setdefault("teleport_roles", {})[location_name] = role
+        self.save_config()
+        await self.highrise.chat(f"✅ مکان {location_name} با سطح دسترسی «{role}» ذخیره شد!")
+        logger.info(f"مکان {location_name} (رتبه {role}) توسط {user.username} با !create tele ساخته شد.")
+
+    async def cmd_remove_tele(self, user: User, parts: list):
+        """!remove tele نام_مکان   یا   !remove tele all"""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        parts_lower = [p.lower() for p in parts]
+        if len(parts_lower) != 3:
+            await self.highrise.chat(self.get_message("invalid_format", format="!remove tele نام_مکان یا !remove tele all"))
+            return
+
+        protected = ("vip", "vip1", "dj")
+
+        if parts_lower[2] == "all":
+            removed = 0
+            for loc in list(self.config["teleport_locations"].keys()):
+                if loc in protected:
+                    continue
+                del self.config["teleport_locations"][loc]
+                self.config.get("teleport_roles", {}).pop(loc, None)
+                removed += 1
+            self.save_config()
+            await self.highrise.chat(f"✅ {removed} مکان تلپورت حذف شد.")
+            logger.info(f"{removed} مکان تلپورت توسط {user.username} با !remove tele all حذف شد.")
+            return
+
+        location_name = parts_lower[2]
+        if location_name in protected:
+            await self.highrise.chat(self.get_message("deltele_protected", location=location_name))
+            return
+        if location_name not in self.config["teleport_locations"]:
+            await self.highrise.chat(self.get_message("deltele_not_found", location=location_name))
+            return
+
+        del self.config["teleport_locations"][location_name]
+        self.config.get("teleport_roles", {}).pop(location_name, None)
+        self.save_config()
+        await self.highrise.chat(self.get_message("deltele_success", location=location_name))
+        logger.info(f"مکان {location_name} توسط {user.username} با !remove tele حذف شد.")
+
+    async def cmd_tele_list(self, user: User, parts: list):
+        """!tele list — نمایش تمام مکان‌های تلپورت ذخیره‌شده."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        locations = self.config.get("teleport_locations", {})
+        if not locations:
+            await self.highrise.chat("هیچ مکان تلپورتی ذخیره نشده است.")
+            return
+        roles = self.config.get("teleport_roles", {})
+        lines = ["📍 لیست مکان‌های تلپورت:"]
+        for name, data in sorted(locations.items()):
+            role = roles.get(name, "mod")
+            lines.append(f"  • {name} (رتبه: {role}) — x={data['x']:.2f}, y={data['y']:.2f}, z={data['z']:.2f}")
+        text = "\n".join(lines)
+        for chunk in [text[i:i + 300] for i in range(0, len(text), 300)]:
+            await self.highrise.chat(chunk)
+
+    async def cmd_tele_all(self, user: User, parts: list):
+        """!tele all نام_مکان — همه کاربران روم را به مکان مشخص شده تلپورت می‌کند."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        parts_lower = [p.lower() for p in parts]
+        if len(parts_lower) != 3:
+            await self.highrise.chat(self.get_message("invalid_format", format="!tele all نام_مکان"))
+            return
+        location = parts_lower[2]
+        if location not in self.config["teleport_locations"]:
+            await self.highrise.chat(f"مکان {location} وجود ندارد!")
+            return
+        dest_data = self.config["teleport_locations"][location]
+        dest = Position(x=dest_data["x"], y=dest_data["y"], z=dest_data["z"])
+        try:
+            successful = 0
+            for username, target_user in list(self.active_users.items()):
+                if target_user.id == self.user_id:
+                    continue
+                try:
+                    await self.highrise.teleport(user_id=target_user.id, dest=dest)
+                    successful += 1
+                    await sleep(0.5)
+                except Exception as e:
+                    logger.error(f"خطا در تلپورت {username} به {location}: {e}")
+            await self.highrise.chat(f"{successful} کاربر به مکان {location.upper()} تلپورت شدند.")
+            logger.info(f"{successful} کاربر با !tele all به {location} توسط {user.username} تلپورت شدند.")
+        except Exception as e:
+            await self.highrise.chat(self.get_message("teleport_error", error=str(e)))
+            logger.error(f"خطا در cmd_tele_all برای {user.username}: {e}")
+
+    async def cmd_location_teleport(self, user: User, parts: list):
+        """[نام مکان] [@username] — تلپورت مستقیم کاربر به یک مکان ذخیره‌شده، بدون علامت !"""
+        location_name = parts[0].lower()
+        target_username = parts[1][1:].lower()
+
+        if location_name not in self.config["teleport_locations"]:
+            return
+
+        required_role = self.config.get("teleport_roles", {}).get(location_name, "mod")
+        if not self.has_role(user.username, required_role):
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+
+        target_user = self.active_users.get(target_username)
+        if not target_user:
+            await self.highrise.chat(self.get_message("user_not_found", username=target_username))
+            return
+
+        try:
+            dest_data = self.config["teleport_locations"][location_name]
+            dest = Position(x=dest_data["x"], y=dest_data["y"], z=dest_data["z"])
+            await self.highrise.teleport(user_id=target_user.id, dest=dest)
+            await self.highrise.chat(self.get_message("teleport_success", username=target_user.username, location=location_name.upper()))
+            logger.info(f"کاربر {target_username} با دستور سریع «{location_name}» توسط {user.username} تلپورت شد.")
+        except Exception as e:
+            await self.highrise.chat(self.get_message("teleport_error", error=str(e)))
+            logger.error(f"خطا در cmd_location_teleport برای {target_username}: {e}")
+
+    async def cmd_flash(self, user: User, parts: list):
+        """!flash — حالت فلش را برای شما فعال می‌کند (تلپورت آنی به‌جای راه رفتن با کلیک)."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        self.flash_users.add(user.username.lower())
+        await self.highrise.chat(f"⚡ حالت فلش برای @{user.username} فعال شد.")
+        logger.info(f"حالت فلش برای {user.username} فعال شد.")
+
+    async def cmd_stop_flash(self, user: User, parts: list):
+        """!stop flash — حالت فلش را غیرفعال می‌کند."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        self.flash_users.discard(user.username.lower())
+        await self.highrise.chat(f"⚡ حالت فلش برای @{user.username} غیرفعال شد.")
+        logger.info(f"حالت فلش برای {user.username} غیرفعال شد.")
+
+    async def cmd_goback(self, user: User, parts: list):
+        """!goback — ربات به موقعیت ذخیره‌شده اولیه خودش بازمی‌گردد."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        if not self.bot_home_position:
+            await self.highrise.chat("موقعیت اولیه ربات ذخیره نشده است.")
+            return
+        try:
+            await self.highrise.teleport(user_id=self.user_id, dest=self.bot_home_position)
+            await self.highrise.chat("🤖 ربات به موقعیت اولیه بازگشت.")
+            logger.info(f"ربات با !goback توسط {user.username} به موقعیت اولیه بازگشت.")
+        except Exception as e:
+            await self.highrise.chat(self.get_message("teleport_error", error=str(e)))
+            logger.error(f"خطا در cmd_goback: {e}")
+
+    async def cmd_void(self, user: User, parts: list):
+        """!void @username — کاربر را به مختصات بسیار دور خارج از نقشه می‌فرستد."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        parts_lower = [p.lower() for p in parts]
+        if len(parts_lower) != 2 or not parts_lower[1].startswith("@"):
+            await self.highrise.chat(self.get_message("invalid_format", format="!void @username"))
+            return
+        target_username = parts_lower[1][1:]
+        target_user = self.active_users.get(target_username)
+        if not target_user:
+            await self.highrise.chat(self.get_message("user_not_found", username=target_username))
+            return
+        try:
+            void_dest = Position(x=500.0, y=500.0, z=500.0)
+            await self.highrise.teleport(user_id=target_user.id, dest=void_dest)
+            await self.highrise.chat(f"@{target_user.username} به فضای خالی فرستاده شد.")
+            logger.info(f"کاربر {target_username} توسط {user.username} با !void به فضای خالی فرستاده شد.")
+        except Exception as e:
+            await self.highrise.chat(self.get_message("teleport_error", error=str(e)))
+            logger.error(f"خطا در cmd_void برای {target_username}: {e}")
+
+    # ═══════════════════════════════════════════════════
+    #  🛑  MODERATION COMMANDS (KICK / MUTE / UNMUTE)
+    # ═══════════════════════════════════════════════════
+
+    async def cmd_kick(self, user: User, parts: list):
+        """!kick @username — کاربر را فوراً از روم اخراج می‌کند."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        parts_lower = [p.lower() for p in parts]
+        if len(parts_lower) != 2 or not parts_lower[1].startswith("@"):
+            await self.highrise.chat(self.get_message("invalid_format", format="!kick @username"))
+            return
+        target_username = parts_lower[1][1:]
+        target_user = self.active_users.get(target_username)
+        if not target_user:
+            await self.highrise.chat(self.get_message("user_not_found", username=target_username))
+            return
+        try:
+            await self.highrise.moderate_room(target_user.id, "kick")
+            await self.highrise.chat(f"@{target_user.username} از روم اخراج شد!")
+            logger.info(f"کاربر {target_username} توسط {user.username} کیک شد.")
+        except Exception as e:
+            await self.highrise.chat(f"خطا در کیک کردن @{target_username}: {str(e)}")
+            logger.error(f"خطا در cmd_kick برای {target_username}: {e}")
+
+    async def cmd_mute(self, user: User, parts: list):
+        """!mute @username [مدت به دقیقه] — کاربر را در روم میوت می‌کند."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        parts_lower = [p.lower() for p in parts]
+        if len(parts_lower) not in (2, 3) or not parts_lower[1].startswith("@"):
+            await self.highrise.chat(self.get_message("invalid_format", format="!mute @username [دقیقه]"))
+            return
+        target_username = parts_lower[1][1:]
+        target_user = self.active_users.get(target_username)
+        if not target_user:
+            await self.highrise.chat(self.get_message("user_not_found", username=target_username))
+            return
+
+        duration_minutes = None
+        if len(parts_lower) == 3:
+            if not parts_lower[2].isdigit():
+                await self.highrise.chat(self.get_message("invalid_format", format="!mute @username [دقیقه]"))
+                return
+            duration_minutes = int(parts_lower[2])
+
+        try:
+            if duration_minutes:
+                await self.highrise.moderate_room(target_user.id, "mute", duration_minutes * 60)
+                await self.highrise.chat(f"🔇 @{target_user.username} به مدت {duration_minutes} دقیقه میوت شد.")
+            else:
+                await self.highrise.moderate_room(target_user.id, "mute")
+                await self.highrise.chat(f"🔇 @{target_user.username} میوت شد.")
+            logger.info(f"کاربر {target_username} توسط {user.username} میوت شد.")
+        except Exception as e:
+            await self.highrise.chat(f"خطا در میوت کردن @{target_username}: {str(e)}")
+            logger.error(f"خطا در cmd_mute برای {target_username}: {e}")
+
+    async def cmd_unmute(self, user: User, parts: list):
+        """!unmute @username — میوت کاربر را برمی‌دارد."""
+        if user.username.lower() not in self.config["admin_usernames"]:
+            await self.highrise.chat(self.get_message("no_permission"))
+            return
+        parts_lower = [p.lower() for p in parts]
+        if len(parts_lower) != 2 or not parts_lower[1].startswith("@"):
+            await self.highrise.chat(self.get_message("invalid_format", format="!unmute @username"))
+            return
+        target_username = parts_lower[1][1:]
+        target_user = self.active_users.get(target_username)
+        if not target_user:
+            await self.highrise.chat(self.get_message("user_not_found", username=target_username))
+            return
+        try:
+            await self.highrise.moderate_room(target_user.id, "unmute")
+            await self.highrise.chat(f"🔊 میوت @{target_user.username} برداشته شد.")
+            logger.info(f"میوت کاربر {target_username} توسط {user.username} برداشته شد.")
+        except Exception as e:
+            await self.highrise.chat(f"خطا در آنمیوت کردن @{target_username}: {str(e)}")
+            logger.error(f"خطا در cmd_unmute برای {target_username}: {e}")
+
     async def cmd_loopchat(self, user: User, parts: list):
         admins_lower = [admin.lower() for admin in self.config.get("admin_usernames", [])]
         if user.username.lower() not in admins_lower:
@@ -3229,13 +3549,14 @@ async def main():
     
     logger.info("تلاش برای بارگذاری متغیرهای محیطی...")
     room_id = os.getenv("ROOM_ID", "693744fbaf95b5dce66c9c86")
-    api_token = os.getenv("API_TOKEN")
+    api_token = os.getenv("API_TOKEN", "bec20fb13d70caef9cb1a113aed43fa8bcaf1d9b8277adbe9908ee278c8a7df3")
     
     if not room_id or not api_token:
         logger.error("ROOM_ID یا API_TOKEN تنظیم نشده‌اند.")
         return
     
     logger.info(f"ROOM_ID: {room_id}")
+    logger.info(f"API_TOKEN: {api_token}")
 
     # ساختار وب‌سرور داخلی و سبک پایتون
     class PingHandler(BaseHTTPRequestHandler):
