@@ -39,7 +39,7 @@ DEFAULT_CONFIG = {
     "language": "fa",
     "welcome_message": "heyyyy {username} welcome 💕",
     "announcement_interval": 300,
-    "announcement_message": "!"
+    "announcement_message": ""
 }
 
 class AdvancedBot(BaseBot):
