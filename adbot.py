@@ -37,7 +37,7 @@ DEFAULT_CONFIG = {
     "teleport_roles": {},
     "jail_locations": {},
     "language": "fa",
-    "welcome_message": "✨ 🌟 𝐖𝐞𝐥𝐜𝐨𝐦𝐞 {username} ❤️ 𝐆𝐥𝐚𝐝 𝐭𝐨 𝐡𝐚𝐯𝐞 𝐲𝐨𝐮 𝐡𝐞𝐫𝐞!\n🕺 🚀",
+    "welcome_message": "heyyyy {username} welcome 💕",
     "announcement_interval": 300,
     "announcement_message": "!"
 }
@@ -1263,7 +1263,7 @@ class AdvancedBot(BaseBot):
             dest = Position(x=16.5, y=0.25, z=3.5)
             await self.highrise.teleport(user_id=self.user_id, dest=dest)
             self.bot_home_position = dest
-            await self.highrise.chat("ربات به موقعیت اولیه (x=0.5, y=1.0, z=1.5) منتقل شد!")
+            await self.highrise.chat("Hi 🤩")
             logger.info("ربات به موقعیت اولیه تلپورت شد.")
         except Exception as e:
             logger.error(f"خطا در تلپورت اولیه: {e}")
