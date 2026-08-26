@@ -1308,7 +1308,7 @@ class AdvancedBot(BaseBot):
             self.follow_target = None
             if self.follow_task and not self.follow_task.done():
                 self.follow_task.cancel()
-        await self.highrise.chat(f"@{user.username} از روم خارج شد.")
+        await self.highrise.chat(f"@{user.username} left 🚶🏻‍♂️‍➡️.")
         logger.info(f"کاربر {user.username} (ID: {user.id}) از روم خارج شد. موقعیت: {position}")
 
     async def sync_room_users(self):
