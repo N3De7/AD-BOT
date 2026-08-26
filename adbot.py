@@ -37,7 +37,7 @@ DEFAULT_CONFIG = {
     "teleport_roles": {},
     "jail_locations": {},
     "language": "fa",
-    "welcome_message": "heyyyy {username} welcome 💕",
+    "welcome_message": "𝙝𝙚𝙮𝙮𝙮𝙮 {username} 𝙬𝙚𝙡𝙘𝙤𝙢𝙚 💕",
     "announcement_interval": 300,
     "announcement_message": ""
 }
