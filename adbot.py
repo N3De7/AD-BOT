@@ -8,6 +8,9 @@ import logging
 from datetime import datetime, timedelta
 import random
 import aiohttp
+# ===== UNIVERSAL EMOTE LINK SYSTEM =====
+from urllib.parse import urlparse, parse_qs
+# ===== END UNIVERSAL EMOTE LINK SYSTEM =====
 
 # تنظیم لاگینگ
 logging.basicConfig(
@@ -99,6 +102,9 @@ class AdvancedBot(BaseBot):
             "!party": self.cmd_party,
             "!partys": self.cmd_partys,
             "!emotebot": self.cmd_emotebot,
+            # ===== UNIVERSAL EMOTE LINK SYSTEM =====
+            "!emote": self.cmd_emote,
+            # ===== END UNIVERSAL EMOTE LINK SYSTEM =====
             "!loopchat": self.cmd_loopchat,
             "!goto": self.cmd_goto,
             "!bring": self.cmd_bring,
@@ -1519,10 +1525,123 @@ class AdvancedBot(BaseBot):
             self.party_dances.pop(username, None)
             self.dance_tasks[username].cancel()
             self.dance_tasks.pop(username, None)
-            
-        
-            
-           
+
+    # ===== UNIVERSAL EMOTE LINK SYSTEM =====
+    def _parse_emote_link(self, raw_link: str):
+        """
+        Locally parses a Highrise item deep link (e.g.
+        https://high.rs/item?id=emote-modelwalk&type=emote) and returns the
+        emote id string extracted from it.
+
+        Returns (emote_id, error_message). On success error_message is None.
+        On failure emote_id is None and error_message contains the
+        user-facing error text.
+
+        No network requests are made - this is pure local URL/query-string
+        parsing using the standard library.
+        """
+        try:
+            parsed = urlparse(raw_link)
+        except Exception as e:
+            logger.error(f"خطا در پارس کردن لینک Emote '{raw_link}': {e}")
+            return None, "❌ لینک Emote معتبر نیست."
+
+        host = (parsed.netloc or "").lower()
+        if host not in ("high.rs", "www.high.rs"):
+            return None, "❌ لینک Emote معتبر نیست."
+
+        try:
+            query = parse_qs(parsed.query)
+        except Exception as e:
+            logger.error(f"خطا در پارس کردن query string لینک Emote '{raw_link}': {e}")
+            return None, "❌ لینک Emote معتبر نیست."
+
+        item_type = query.get("type", [None])[0]
+        if item_type and item_type.lower() != "emote":
+            return None, "❌ این لینک مربوط به Emote نیست."
+
+        emote_id_values = query.get("id")
+        if not emote_id_values or not emote_id_values[0].strip():
+            return None, "❌ شناسه Emote در لینک پیدا نشد."
+
+        emote_id = emote_id_values[0].strip()
+
+        # اگر نوع لینک مشخص نشده باشه (بدون type=emote) ولی ساختار id واضح
+        # نشون‌دهنده emote/dance باشه (پیشوندهای متداول Highrise)، بازم قبول کن.
+        if not item_type and not (
+            emote_id.lower().startswith("emote-")
+            or emote_id.lower().startswith("dance-")
+            or emote_id.lower().startswith("idle")
+            or emote_id.lower().startswith("sit-")
+        ):
+            return None, "❌ این لینک مربوط به Emote نیست."
+
+        return emote_id, None
+
+    def _resolve_emote_input(self, raw_input: str):
+        """
+        Resolves whatever the user typed after !emote into an actual
+        Highrise emote id. Supports:
+          1) Highrise emote deep links (https://high.rs/item?id=...&type=emote)
+          2) Existing numbers/aliases from self.emotes
+          3) A raw emote id that already matches a value in self.emotes
+
+        Returns (emote_id, error_message) - same contract as
+        _parse_emote_link above.
+        """
+        cleaned = raw_input.strip()
+        lowered = cleaned.lower()
+
+        if lowered.startswith("http://") or lowered.startswith("https://") or "high.rs" in lowered:
+            return self._parse_emote_link(cleaned)
+
+        # شماره یا نام مستعار موجود در سیستم فعلی
+        actual_emote_name = self.emotes.get(lowered)
+        if not actual_emote_name and lowered in self.emotes.values():
+            actual_emote_name = lowered
+
+        if actual_emote_name:
+            return actual_emote_name, None
+
+        return None, "❌ دنس یا شماره وارد شده در لیست دنس‌های ربات پیدا نشد!"
+
+    async def cmd_emote(self, user: User, parts: list):
+        """
+        !emote <number|name|Highrise emote link>
+
+        Thin parser/validator that resolves the requested emote (including
+        dynamically, from a Highrise emote deep link) and hands off to the
+        existing start_dance() architecture - no duplicate dance loop logic
+        is introduced here.
+        """
+        if len(parts) < 2:
+            await self.highrise.chat(
+                "⚠️ فرمت اشتباه! مثال: !emote 52  یا  !emote https://high.rs/item?id=emote-modelwalk&type=emote"
+            )
+            return
+
+        raw_input = " ".join(parts[1:]).strip()
+        if not raw_input:
+            await self.highrise.chat(
+                "⚠️ فرمت اشتباه! مثال: !emote 52  یا  !emote https://high.rs/item?id=emote-modelwalk&type=emote"
+            )
+            return
+
+        actual_emote_name, error = self._resolve_emote_input(raw_input)
+        if error:
+            await self.highrise.chat(error)
+            return
+
+        try:
+            await self.start_dance(user, actual_emote_name)
+        except Exception as e:
+            logger.error(f"خطا در اجرای Emote '{actual_emote_name}' برای {user.username}: {e}")
+            if user.username.lower() in self.dance_tasks:
+                self.dance_tasks[user.username.lower()].cancel()
+                self.dance_tasks.pop(user.username.lower(), None)
+            self.user_dances.pop(user.username.lower(), None)
+            await self.highrise.chat(f"❌ خطا در اجرای Emote برای @{user.username}.")
+    # ===== END UNIVERSAL EMOTE LINK SYSTEM =====
 
     async def cmd_help(self, user: User, parts: list):
         help_text = (
