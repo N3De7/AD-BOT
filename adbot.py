@@ -1496,6 +1496,7 @@ class AdvancedBot(BaseBot):
         await self.stop_dance(user)
         self.user_dances[username] = emote
         duration = self.emote_durations.get(emote, 15.0)
+        sleep_time = max(0.1, duration - 0.2)
         # ⚡ تضمین اجرای کامل دنس: به‌جای کم کردن، یک ثانیه به زمان اضافه می‌کنیم
         # تا حتی اگه مدت‌زمان ثبت‌شده کمی کمتر از واقعیت باشه، دنس هیچ‌وقت وسط اجرا قطع نشه
         sleep_time = duration + 1.0
