@@ -3019,6 +3019,7 @@ class AdvancedBot(BaseBot):
 
         emote = self.emotes[dance_number]
         duration = self.emote_durations.get(emote, 15.0)
+        sleep_time = max(0.1, duration - 0.2)
 
         if parts[1] == "all":
             try:
