@@ -1459,6 +1459,21 @@ class AdvancedBot(BaseBot):
         if user_id == self.user_id:
             return
 
+        # 📖 دستور !help در پیوی هم کار می‌کند و بر اساس دسته‌بندی نمایش داده می‌شود
+        # مثال: !help تنها منوی دسته‌ها را نشان می‌دهد، !help tip فقط دستورات آن دسته را
+        stripped_text = (text or "").strip()
+        msg_parts = stripped_text.split()
+        if msg_parts and msg_parts[0].lower() == "!help":
+            category = msg_parts[1].lower() if len(msg_parts) > 1 else None
+            help_text = self._build_help_text(category)
+            try:
+                for chunk in [help_text[i:i+400] for i in range(0, len(help_text), 400)]:
+                    await self.highrise.send_message(user_id, chunk)
+                logger.info(f"راهنمای پیوی (دسته: {category or 'منو'}) برای کاربر [{user_id}] ارسال شد.")
+            except Exception as e:
+                logger.error(f"خطا در ارسال راهنمای پیوی به [{user_id}]: {e}")
+            return
+
         # 👑 متن تبلیغاتی و معرفی ویژگی‌های ربات به همراه اطلاعات رنت
         auto_reply = (
             "سلام عزیز! ❤️\n\n"
@@ -1491,9 +1506,17 @@ class AdvancedBot(BaseBot):
             logger.error(f"خطا در پردازش تیپ از {sender.username} به {receiver.username}: {e}")
             await self.highrise.chat(f"خطا در پردازش تیپ از @{sender.username} به @{receiver.username}: {e}")
 
+    async def _notify_dance_status(self, user: User, active: bool):
+        """در پیوی (پیام خصوصی) به کاربر اطلاع می‌دهد که دنسش فعال یا غیرفعال شد."""
+        status_text = "فعال شد ✅" if active else "غیرفعال شد ⛔"
+        try:
+            await self.highrise.send_message(user.id, f"{user.username} —- دنس —- {status_text}")
+        except Exception as e:
+            logger.error(f"خطا در ارسال پیوی وضعیت دنس به {user.username}: {e}")
+
     async def start_dance(self, user: User, emote: str):
         username = user.username.lower()
-        await self.stop_dance(user)
+        await self.stop_dance(user, notify=False)
         self.user_dances[username] = emote
         duration = self.emote_durations.get(emote, 15.0)
         sleep_time = max(0.1, duration - 0.2)
@@ -1514,8 +1537,9 @@ class AdvancedBot(BaseBot):
         task = create_task(dance_loop())
         self.dance_tasks[username] = task
         logger.info(f"کاربر {username} شروع به رقص {emote} کرد.")
+        await self._notify_dance_status(user, active=True)
 
-    async def stop_dance(self, user: User):
+    async def stop_dance(self, user: User, notify: bool = True):
         username = user.username.lower()
         if username in self.party_dances and self.party_dances[username][1]:
             await self.highrise.chat(f"@{username} نمی‌توانید رقص اجباری را متوقف کنید! فقط ادمین با !partys می‌تواند آن را متوقف کند.")
@@ -1526,6 +1550,8 @@ class AdvancedBot(BaseBot):
             self.party_dances.pop(username, None)
             self.dance_tasks[username].cancel()
             self.dance_tasks.pop(username, None)
+            if notify:
+                await self._notify_dance_status(user, active=False)
 
     # ===== UNIVERSAL EMOTE LINK SYSTEM =====
     def _parse_emote_link(self, raw_link: str):
@@ -1644,60 +1670,124 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"❌ خطا در اجرای Emote برای @{user.username}.")
     # ===== END UNIVERSAL EMOTE LINK SYSTEM =====
 
+    # ===== دسته‌بندی دستورات برای !help =====
+    HELP_CATEGORIES = {
+        "general": {
+            "emoji": "📋",
+            "title": "دستورات عمومی",
+            "lines": [
+                "❖ Numbers or emote name - اجرای یک ایموت/دنس",
+                "❖ stop - توقف دنس فعلی",
+                "❖ !help - نمایش دسته‌بندی راهنما",
+                "❖ !help <دسته> - نمایش دستورات یک دسته (مثال: !help tip)",
+            ],
+        },
+        "tip": {
+            "emoji": "💰",
+            "title": "گلد و کیف‌پول",
+            "lines": [
+                "❖ !wallet - نمایش موجودی کیف‌پول (فقط در پیوی خودتون)",
+                "❖ !tip @username <gold> - تیپ به یک کاربر",
+                "❖ !tip <gold> all - تیپ به همه",
+            ],
+        },
+        "dance": {
+            "emoji": "💃",
+            "title": "رقص و ایموت",
+            "lines": [
+                "❖ !emote <شماره|نام|لینک> - اجرای یک ایموت/دنس",
+                "❖ !emotebot <ایموت> - تنظیم دنس ثابت ربات",
+                "❖ !party @username <شماره> - اجبار رقص یک کاربر",
+                "❖ !party all <شماره> - اجبار رقص همه",
+                "❖ !partys @username - توقف رقص اجباری",
+            ],
+        },
+        "fun": {
+            "emoji": "🎉",
+            "title": "تعامل و سرگرمی",
+            "lines": [
+                "❖ !heart @username / !heart all - ارسال قلب بنفش",
+                "❖ !clap / !wink / !wave / !thumbs @username",
+                "❖ !clap all / !wink all / !wave all / !thumbs all",
+                "❖ !spam <تعداد> <پیام> - ارسال پیام تکراری",
+                "❖ !loopchat <پیام> - تکرار خودکار یک پیام",
+            ],
+        },
+        "teleport": {
+            "emoji": "🚀",
+            "title": "تلپورت و حرکت",
+            "lines": [
+                "❖ !tele @username <location>",
+                "❖ !tele to @username / !tele me @username / !tele me all",
+                "❖ !addtele / !deltele - مدیریت مکان‌های تلپورت",
+                "❖ !create tele <name> [role] / !remove tele <name/all>",
+                "❖ !tele list / !tele all <location>",
+                "❖ <location> @username - تلپورت سریع بدون !",
+                "❖ !goto / !bring / !bring all / !switch @username",
+                "❖ !follow @username / !stop follow",
+                "❖ !goback - بازگشت ربات / !come - آوردن ربات پیش شما",
+                "❖ !void @username - ارسال کاربر به فضای دور",
+                "❖ !flash / !stop flash - حالت انتقال آنی",
+            ],
+        },
+        "moderation": {
+            "emoji": "🛡️",
+            "title": "مدیریت روم",
+            "lines": [
+                "❖ !ban @username [دقیقه] / !unban @username",
+                "❖ !kick @username",
+                "❖ !mute @username [دقیقه] / !unmute @username",
+                "❖ !freeze / !unfreeze @username",
+                "❖ !jail / !unjail @username",
+                "❖ !create jail - ذخیره موقعیت زندان",
+                "❖ !removetele jail <id> / !jail list",
+            ],
+        },
+        "admin": {
+            "emoji": "👑",
+            "title": "ادمین ربات",
+            "lines": [
+                "❖ !addadmin @username / !removeadmin @username",
+                "❖ !addhost @username / !removehost @username",
+                "❖ !listadd - نمایش لیست ادمین‌ها و هاست‌ها",
+                "❖ !welcome <پیام> - تنظیم پیام خوش‌آمد",
+                "❖ !botfit @username - کپی کردن ست لباس کاربر",
+            ],
+        },
+    }
+
+    def _build_help_text(self, category: str = None) -> str:
+        """متن راهنما را می‌سازد. بدون دسته → منوی دسته‌ها، با دسته → دستورات همان دسته."""
+        if not category:
+            lines = [
+                "           🤖 HELP | BOT : @dabydabybot 🤖",
+                "━━━━━━━━━━━━━━━━━━━━━━━",
+                "برای دیدن دستورات هر دسته بنویسید: !help <دسته>",
+                "",
+            ]
+            for key, data in self.HELP_CATEGORIES.items():
+                lines.append(f"{data['emoji']} !help {key} — {data['title']}")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append("          💎 PM FOR REN shahin 💎")
+            return "\n".join(lines)
+
+        category = category.lower().strip()
+        data = self.HELP_CATEGORIES.get(category)
+        if not data:
+            available = ", ".join(self.HELP_CATEGORIES.keys())
+            return f"❌ دسته «{category}» پیدا نشد.\nدسته‌های موجود: {available}"
+
+        lines = [f"{data['emoji']} {data['title']} {data['emoji']}", "━━━━━━━━━━━━━━━━━━━━━━━"]
+        lines.extend(data["lines"])
+        lines.append("━━━━━━━━━━━━━━━━━━━━━━━")
+        return "\n".join(lines)
+
     async def cmd_help(self, user: User, parts: list):
-        help_text = (
-    "           🤖 HELP | BOT : @dabydabybot 🤖\n"
-    "━━━━━━━━━━━━━━━━━━━━━━━\n"
-    "❖ Numbers or emote name - Play an emote\n"
-    "❖ stop - Stop current emote\n"
-    "❖ !help - Show this help menu\n"
-    "❖ !spam <message> - Send spam messages\n"
-    "❖ !tele @username <location> - Teleport user to a location\n"
-    "❖ !tele to @username - Teleport to a user\n"
-    "❖ !tele me @username - Teleport user to you\n"
-    "❖ !tele me all - Teleport everyone to you\n"
-    "❖ !heart @username - Send purple hearts\n"
-    "❖ !heart all - Send purple hearts to everyone\n"
-    "❖ !clap / !wink / !wave / !thumbs @username\n"
-    "❖ !clap all / !wink all / !wave all / !thumbs all\n"
-    "❖ !wallet - Show wallet balance\n"
-    "❖ !tip @username <gold> - Tip a user\n"
-    "❖ !tip all <gold> - Tip everyone\n"
-    "❖ !botfit @username - Copy user's outfit\n"
-    "❖ !ban @username - Ban a user\n"
-    "❖ !unban @username - Unban a user\n"
-    "❖ !addtele / !deltele - Manage teleport locations\n"
-    "❖ !welcome <message> - Set welcome message\n"
-    "❖ !addadmin @username - Add admin\n"
-    "❖ !removeadmin @username - Remove admin\n"
-    "❖ !emotebot <emote> - Set bot emote\n"
-    "❖ !loopchat <message> - Set loop chat\n"
-    "❖ !listadd - Show admin list\n"
-    "❖ !freeze / !unfreeze @username\n"
-    "❖ !jail / !unjail @username\n"
-    "❖ !create jail - Save jail location\n"
-    "❖ !removetele jail <id> - Remove jail\n"
-    "❖ !jail list - Show jail locations\n"
-    "❖ !party @username <emote> - Force user emote\n"
-    "❖ !party all <emote> - Force everyone emote\n"
-    "❖ !partys @username - Stop forced emote\n"
-    "❖ !goto / !bring / !bring all / !switch @username\n"
-    "❖ !follow @username / !stop follow\n"
-    "❖ !create tele <name> [role] - New tele w/ access role\n"
-    "❖ <location> @username - Quick teleport (no !)\n"
-    "❖ !remove tele <name> / !remove tele all\n"
-    "❖ !tele list / !tele all <location>\n"
-    "❖ !flash / !stop flash - Instant-move mode\n"
-    "❖ !goback - Bot returns home / !come - Bot to you\n"
-    "❖ !void @username - Send user far away\n"
-    "❖ !kick / !mute @username [minutes] / !unmute\n"
-    "❖ !ban @username [minutes] - Ban (optional duration)\n"
-    "━━━━━━━━━━━━━━━━━━━━━━━\n"
-    "          💎 PM FOR REN shahin 💎"
-        )
-        for chunk in [help_text[i:i+200] for i in range(0, len(help_text), 200)]:
+        category = parts[1].lower() if len(parts) > 1 else None
+        help_text = self._build_help_text(category)
+        for chunk in [help_text[i:i+300] for i in range(0, len(help_text), 300)]:
             await self.highrise.chat(chunk)
-        logger.info(f"راهنما توسط {user.username} درخواست شد.")
+        logger.info(f"راهنما (دسته: {category or 'منو'}) توسط {user.username} درخواست شد.")
 
     async def cmd_spam(self, user: User, parts: list):
         if user.username.lower() not in self.config["admin_usernames"]:
