@@ -1452,45 +1452,64 @@ class AdvancedBot(BaseBot):
         except Exception as e:
             logger.error(f"خطا در on_chat از {username}: {e}")
 
-    async def on_message(self, user_id: str, text: str, message_id: str) -> None:
+    async def on_message(self, user_id: str, data) -> None:
+        """پیام خصوصی — سازگار با ConversationMessage جدید و رشته قدیمی"""
+        # استخراج متن: SDK جدید آبجکت می‌دهد که متن در .content است
+        if hasattr(data, "content"):
+            text = data.content
+        else:
+            text = str(data) if data else ""
         logger.info(f"📥 دایرکت مسیج جدید از کاربر [{user_id}]: {text}")
-        
+
         # ⛔ جلوگیری از پاسخ به پیام‌های خودِ ربات
         if user_id == self.user_id:
             return
 
-        # 📖 دستور !help در پیوی هم کار می‌کند و بر اساس دسته‌بندی نمایش داده می‌شود
-        # مثال: !help تنها منوی دسته‌ها را نشان می‌دهد، !help tip فقط دستورات آن دسته را
         stripped_text = (text or "").strip()
         msg_parts = stripped_text.split()
+
+        # 📖 !help در پیوی (همان سیستم دسته‌بندی)
         if msg_parts and msg_parts[0].lower() == "!help":
             category = msg_parts[1].lower() if len(msg_parts) > 1 else None
             help_text = self._build_help_text(category)
             try:
                 for chunk in [help_text[i:i+400] for i in range(0, len(help_text), 400)]:
                     await self.highrise.send_message(user_id, chunk)
-                logger.info(f"راهنمای پیوی (دسته: {category or 'منو'}) برای کاربر [{user_id}] ارسال شد.")
+                logger.info(f"راهنمای پیوی (دسته: {category or 'منو'}) برای [{user_id}] ارسال شد.")
             except Exception as e:
                 logger.error(f"خطا در ارسال راهنمای پیوی به [{user_id}]: {e}")
             return
 
-        # 👑 متن تبلیغاتی و معرفی ویژگی‌های ربات به همراه اطلاعات رنت
+        # 💰 !wallet در پیوی (طبق متن help باید در پیوی کار کند)
+        if msg_parts and msg_parts[0].lower() == "!wallet":
+            try:
+                wallet = await self.highrise.get_wallet()
+                gold_amount = 0
+                if hasattr(wallet, "content") and isinstance(wallet.content, list):
+                    for item in wallet.content:
+                        if getattr(item, "type", None) == "gold":
+                            gold_amount = item.amount
+                            break
+                await self.highrise.send_message(user_id, f"💰 موجودی گلد ربات: {gold_amount}")
+            except Exception as e:
+                logger.error(f"خطا در wallet پیوی: {e}")
+                await self.highrise.send_message(user_id, f"خطا در دریافت موجودی: {e}")
+            return
+
+        # 👑 پاسخ خودکار تبلیغاتی
         auto_reply = (
             "سلام عزیز! ❤️\n\n"
             "🤖 من یک ربات پیشرفته و فول امکانات برای مدیریت و ارتقای روم هستم!\n\n"
-            "✨ **بخشی از قابلیت‌های خفن من:**\n"
-            "🔹 دارای ۲۴۸ دنس جذاب و فعال با تکرار همیشگی و بدون حتی ۱ ثانیه تاخیر! 💃\n"
-            "🔹 سیستم خوش‌آمدگویی هوشمند و خودکار به محض ورود پلیرها 🚪\n"
-            "🔹 قابلیت رقص همگانی و پارتی خودکار برای کل اعضای روم 🕺\n"
-            "🔹 امنیت بالا و مدیریت کامل ادمین‌ها و دستورات اختصاصی 🛠️\n"
-            "🔹 میزبانی ۲۴ ساعته و آنلاین بدون قطعی روی سرورهای قدرتمند ⚡\n\n"
-            "🤝 **شرایط رنت (اجاره):**\n"
-            "برای اجاره یا همان رنت این ربات فوق‌العاده برای روم خود، لطفاً همین الان به آیدی زیر پیام بدید:\n"
+            "✨ بخشی از قابلیت‌های من:\n"
+            "🔹 ۲۴۸ دنس فعال با تکرار همیشگی و بدون تاخیر 💃\n"
+            "🔹 خوش‌آمدگویی خودکار 🚪\n"
+            "🔹 رقص همگانی و پارتی 🕺\n"
+            "🔹 مدیریت کامل ادمین‌ها 🛠️\n"
+            "🔹 میزبانی ۲۴ ساعته بدون قطعی ⚡\n\n"
+            "🤝 برای رنت به آیدی زیر پیام بدید:\n"
             "👉 shahin 👈"
         )
-        
         try:
-            # ✉️ ارسال پاسخ مستقیم به دایرکت (Inbox) کاربر
             await self.highrise.send_message(user_id, auto_reply)
         except Exception as e:
             logger.error(f"خطا در ارسال پاسخ خودکار دایرکت: {e}")
